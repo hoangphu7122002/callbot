@@ -5,6 +5,8 @@ from array import array
 import io
 from openai import OpenAI
 from config.config import config
+from pydub import AudioSegment
+import tempfile
 
 class AudioHandler:
     def __init__(self, chunk=1024, channels=1, rate=16000, 
@@ -115,9 +117,42 @@ class AudioHandler:
                 input=text_input
             )
             
-            # Phát audio
-            audio_stream = io.BytesIO(response.content)
-            self._play_local_audio(audio_stream)
+            # Chuyển đổi MP3 sang WAV
+            audio_data = io.BytesIO(response.content)
+            audio_segment = AudioSegment.from_mp3(audio_data)
+            
+            # Tạo temporary file để lưu WAV
+            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as temp_wav:
+                audio_segment.export(temp_wav.name, format='wav')
+                
+                # Mở file WAV để phát
+                wave_obj = wave.open(temp_wav.name, 'rb')
+                
+                # Mở stream với thông số từ wave file
+                stream = self.p.open(
+                    format=self.p.get_format_from_width(wave_obj.getsampwidth()),
+                    channels=wave_obj.getnchannels(),
+                    rate=wave_obj.getframerate(),
+                    output=True
+                )
+                test1 = self.p.get_format_from_width(wave_obj.getsampwidth())
+                test2 = wave_obj.getnchannels()
+                test3 = wave_obj.getframerate()
+                print(test1)
+                print(test2)
+                print(test3)
+                
+                # Đọc và phát audio theo từng chunk
+                chunk_size = 1024
+                data = wave_obj.readframes(chunk_size)
+                while data:
+                    stream.write(data)
+                    data = wave_obj.readframes(chunk_size)
+                
+                # Dọn dẹp
+                stream.stop_stream()
+                stream.close()
+                wave_obj.close()
             
         except Exception as e:
             print(f"Lỗi khi sử dụng OpenAI TTS: {e}")

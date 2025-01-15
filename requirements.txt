@@ -4,3 +4,4 @@ requests
 openai
 websockets
 underthesea
+pydub

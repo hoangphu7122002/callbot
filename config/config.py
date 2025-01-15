@@ -5,7 +5,7 @@ class Config:
 
     # Audio Settings
     AUDIO_CHUNK = 1024
-    AUDIO_FORMAT = "paInt16"
+    AUDIO_FORMAT = "paInt16" #8
     AUDIO_CHANNELS = 1
     AUDIO_RATE = 24000
     SILENCE_THRESHOLD = 300 # Giảm ngưỡng để nhạy hơn với âm thanh
