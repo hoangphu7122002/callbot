@@ -7,9 +7,14 @@ import websockets
 import json
 import base64
 import io
-import wave
+from openai import OpenAI
 from config.config import config
 from src.text_normalizer import TextNormalizer
+import sys
+import os
+
+# Khởi tạo OpenAI client
+client = OpenAI(api_key=config.OPENAI_API_KEY)
 
 # Khởi tạo các handler với config
 audio_handler = AudioHandler(
@@ -23,39 +28,51 @@ audio_handler = AudioHandler(
 speech_processor = SpeechProcessor()
 chatbot = ChatbotClient(config)
 
-async def text_to_speech_ws(text: str):
+async def text_to_speech(text: str):
     try:
-        async with websockets.connect(config.TTS_WEBSOCKET_URL) as websocket:
-            request_data = {
-                "text": text,
-                "language": config.TTS_LANGUAGE,
-                "sample_file": config.TTS_VOICE
-            }
-            # print(request_data)
-            await websocket.send(json.dumps(request_data))
+        if config.TTS_PROVIDER == "openai":
+            # Gọi API OpenAI TTS với cú pháp mới
+            # response = client.audio.speech.create(
+            #     model="tts-1",
+            #     voice=config.TTS_OPENAI_VOICE,
+            #     input=text
+            # )
             
-            while True:
-                try:
-                    response = await websocket.recv()
-                    data = json.loads(response)
-                    
-                    if "error" in data:
-                        print(f"Lỗi: {data['error']}")
+            # # Lấy audio data
+            # audio_data = io.BytesIO(response.content)
+            # audio_handler.play_audio(audio_data)
+            audio_handler.play_audio(text)
+        else:
+            async with websockets.connect(config.TTS_WEBSOCKET_URL) as websocket:
+                request_data = {
+                    "text": text,
+                    "language": config.TTS_LANGUAGE,
+                    "sample_file": config.TTS_VOICE
+                }
+                await websocket.send(json.dumps(request_data))
+                
+                while True:
+                    try:
+                        response = await websocket.recv()
+                        data = json.loads(response)
+                        
+                        if "error" in data:
+                            print(f"Lỗi: {data['error']}")
+                            break
+                            
+                        if data.get("status") == "error":
+                            print(f"Lỗi xử lý câu: {data.get('error')}")
+                            continue
+                            
+                        audio_bytes = base64.b64decode(data["audio_base64"])
+                        audio_handler.play_audio(audio_bytes)
+                        
+                        if data["index"] == data["total"] - 1:
+                            break
+                            
+                    except websockets.exceptions.ConnectionClosed:
+                        print("Kết nối WebSocket bị đóng")
                         break
-                        
-                    if data.get("status") == "error":
-                        print(f"Lỗi xử lý câu: {data.get('error')}")
-                        continue
-                        
-                    audio_bytes = base64.b64decode(data["audio_base64"])
-                    audio_handler.play_audio(audio_bytes)
-                    
-                    if data["index"] == data["total"] - 1:
-                        break
-                        
-                except websockets.exceptions.ConnectionClosed:
-                    print("Kết nối WebSocket bị đóng")
-                    break
                     
     except Exception as e:
         print(f"Lỗi khi xử lý text-to-speech: {e}")
@@ -104,10 +121,10 @@ async def main():
             
             # Chuẩn hóa text trước khi đưa vào TTS
             normalized_response = text_normalizer.normalize_vietnamese_text(bot_response)
-            normailzed_response = normalized_response.replace('!','.').replace(' .','.').replace("?","").replace(" ,",",")
-            normailzed_response = normailzed_response.replace('.',',',1)
-            print(f"Bot: {normailzed_response}")
-            await text_to_speech_ws(normailzed_response)
+            normalized_response = normalized_response.replace('!','.').replace(' .','.').replace("?","").replace(" ,",",")
+            normalized_response = normalized_response.replace('.',',',1)
+            print(f"Bot: {normalized_response}")
+            await text_to_speech(normalized_response)
             
             if should_end:
                 print("Bot yêu cầu kết thúc cuộc hội thoại.")
@@ -119,4 +136,6 @@ async def main():
         print("Kết thúc chương trình")
 
 if __name__ == "__main__":
+    # Khôi phục stderr nếu cần
+    # sys.stderr = stderr 
     asyncio.run(main()) 

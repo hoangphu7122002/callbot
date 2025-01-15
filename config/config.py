@@ -14,13 +14,13 @@ class Config:
     MAX_CONVERSATION_TIME = 300 # Thời gian tối đa cho mỗi cuộc trò chuyện (khoảng 5 phút)
 
     # Text-to-Speech Settings
-    TTS_PROVIDER = "openai"
-    TTS_VOICE = "nu-calm.wav"
+    TTS_PROVIDER = "openai" #local
+    # TTS_VOICE = "nu-calm.wav"
     TTS_OPENAI_VOICE = "alloy"
     TTS_LANGUAGE = "vi"
 
     # Speech-to-Text Settings
-    STT_PROVIDER = "openai"
+    STT_PROVIDER = "openai" #local
     STT_LANGUAGE = "vi"
     STT_MODEL = "whisper-1"
 
@@ -28,8 +28,8 @@ class Config:
     END_CONVERSATION_KEYWORDS = ["tạm biệt", "goodbye", "bye", "kết thúc"]
     
     # OpenAI config
-    GPT_MODEL = 'chatgpt-4o-latest'  # hoặc model bạn đang sử dụng
-    OPENAI_API_KEY = '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'  # Thay bằng API key của bạn
+    GPT_MODEL = 'gpt-4o-mini'  # hoặc model bạn đang sử dụng
+    OPENAI_API_KEY = 'key'
 
     # Dify config
     DIFY_API_URL = "http://127.0.0.1:25001/v1/chat-messages"

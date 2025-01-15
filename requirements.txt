@@ -1,0 +1,6 @@
+pyaudio
+numpy
+requests
+openai
+websockets
+underthesea

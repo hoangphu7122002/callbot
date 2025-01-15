@@ -47,3 +47,5 @@ Thumbs.db
 *.env 
 
 sipcallbot
+venv
+*/__pycache__/
