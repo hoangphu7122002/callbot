@@ -29,7 +29,7 @@ class Config:
     
     # OpenAI config
     GPT_MODEL = 'gpt-4o-mini'  # hoặc model bạn đang sử dụng
-    OPENAI_API_KEY = 'key'
+    OPENAI_API_KEY = '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'
 
     # Dify config
     DIFY_API_URL = "http://127.0.0.1:25001/v1/chat-messages"
@@ -39,6 +39,19 @@ class Config:
     # BOT_TYPE = "dify"  # or "chatgpt" for switching between bots
     
     BOT_TYPE = "chatgpt"  # or "chatgpt" for switching between bots
+
+    # RTP Settings
+    RTP_LOCAL_IP = "127.0.0.1"     # Localhost
+    
+    # Port settings
+    USER_PORT = 5002               # Port user gửi/nhận
+    BOT_PORT = 5006               # Port bot gửi/nhận
+    
+    # Audio settings
+    AUDIO_CHUNK = 1024            # Chunk size phải giống nhau
+    AUDIO_RATE = 24000            # Sample rate phải giống nhau
+    AUDIO_CHANNELS = 1
+    SILENCE_THRESHOLD = 300
 
 # Create a singleton instance
 config = Config()

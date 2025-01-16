@@ -10,9 +10,9 @@ import time
 from queue import Queue
 
 class RTPHandler:
-    def __init__(self, local_ip="0.0.0.0", local_port=12345,
+    def __init__(self, local_ip="127.0.0.1", local_port=12345,
                  remote_ip="127.0.0.1", remote_port=12346,
-                 chunk_size=960, sample_rate=16000):
+                 chunk_size=1024, sample_rate=24000):
         # Cấu hình âm thanh
         self.CHUNK = chunk_size
         self.FORMAT = pyaudio.paInt16
@@ -28,12 +28,13 @@ class RTPHandler:
         # Khởi tạo socket UDP
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.bind((self.local_ip, self.local_port))
+        print(f"Đã bind socket tại {self.local_ip}:{self.local_port}")
         
         # Khởi tạo PyAudio
         self.audio = pyaudio.PyAudio()
         
         # Khởi tạo VAD
-        self.vad = webrtcvad.Vad(3)  # Aggressiveness level 3
+        self.vad = webrtcvad.Vad(3)
         
         # Queue cho audio chunks
         self.audio_queue = Queue()
@@ -45,7 +46,7 @@ class RTPHandler:
         # RTP header fields
         self.sequence_number = 0
         self.timestamp = 0
-        
+
     def create_rtp_header(self):
         """Tạo RTP header"""
         version = 2
@@ -63,75 +64,100 @@ class RTPHandler:
             second_byte,
             self.sequence_number,
             self.timestamp,
-            0)  # SSRC (synchronization source)
+            0)  # SSRC
         
         self.sequence_number = (self.sequence_number + 1) & 0xFFFF
         self.timestamp += self.CHUNK
         
         return header
 
-    def start_recording(self):
-        """Bắt đầu ghi âm và gửi RTP"""
-        self.is_recording = True
-        self.recording_stream = self.audio.open(
+    def record_audio(self):
+        """Ghi âm và gửi qua RTP"""
+        stream = self.audio.open(
             format=self.FORMAT,
             channels=self.CHANNELS,
             rate=self.RATE,
             input=True,
             frames_per_buffer=self.CHUNK
         )
-        
-        threading.Thread(target=self._record_and_send).start()
 
-    def _record_and_send(self):
-        """Thread ghi âm và gửi RTP"""
-        while self.is_recording:
+        print("* Đang ghi âm và gửi RTP stream...")
+        frames = []
+        silent_chunks = 0
+        has_speech = False
+
+        while True:
             try:
-                audio_data = self.recording_stream.read(self.CHUNK)
-                # Kiểm tra VAD
-                if self.vad.is_speech(audio_data, self.RATE):
-                    # Tạo và gửi gói RTP
-                    rtp_packet = self.create_rtp_header() + audio_data
+                data = stream.read(self.CHUNK, exception_on_overflow=False)
+                
+                # Chỉ gửi qua RTP, không phát trực tiếp
+                
+                if len(data) == self.CHUNK * 2:
+                    
+                    rtp_packet = self.create_rtp_header() + data
                     self.sock.sendto(rtp_packet, (self.remote_ip, self.remote_port))
-            except Exception as e:
-                print(f"Lỗi khi ghi âm và gửi RTP: {e}")
+                
+                # Xử lý VAD
+                array_data = array('h', data)
+                volume = sum(abs(x) for x in array_data) / len(array_data)
 
-    def start_playing(self):
-        """Bắt đầu nhận và phát RTP"""
-        self.is_playing = True
-        self.playback_stream = self.audio.open(
-            format=self.FORMAT,
-            channels=self.CHANNELS,
-            rate=self.RATE,
-            output=True,
-            frames_per_buffer=self.CHUNK
-        )
-        
-        threading.Thread(target=self._receive_and_play).start()
+                if volume > 300:
+                    silent_chunks = 0
+                    has_speech = True
+                    frames.append(data)
+                else:
+                    silent_chunks += 1
+                    if has_speech:
+                        frames.append(data)
 
-    def _receive_and_play(self):
-        """Thread nhận và phát RTP"""
-        while self.is_playing:
-            try:
-                data, addr = self.sock.recvfrom(2048)
-                # Bỏ qua RTP header (12 bytes)
-                audio_data = data[12:]
-                self.playback_stream.write(audio_data)
+                if has_speech and silent_chunks > 60:
+                    break
+                elif not has_speech and silent_chunks > 80:
+                    stream.stop_stream()
+                    stream.close()
+                    return None
+
             except Exception as e:
-                print(f"Lỗi khi nhận và phát RTP: {e}")
+                print(f"Lỗi khi ghi âm: {e}")
+                break
+
+        stream.stop_stream()
+        stream.close()
+
+        if has_speech and len(frames) > 0:
+            return b''.join(frames)
+        return None
+
+    def send_audio(self, audio_data):
+        """Chỉ gửi audio qua RTP, không phát trực tiếp"""
+        if not audio_data:
+            return
+            
+        try:
+            # Chia audio thành các chunk và gửi qua RTP
+            for i in range(0, len(audio_data), self.CHUNK):
+                chunk = audio_data[i:i + self.CHUNK]
+                if len(chunk) == self.CHUNK:
+                    rtp_packet = self.create_rtp_header() + chunk
+                    self.sock.sendto(rtp_packet, (self.remote_ip, self.remote_port))
+                    time.sleep(0.02)  # Delay giữa các chunk
+            
+        except Exception as e:
+            print(f"Lỗi khi gửi audio: {str(e)}")
 
     def stop(self):
         """Dừng tất cả hoạt động"""
         self.is_recording = False
         self.is_playing = False
         
-        if hasattr(self, 'recording_stream'):
-            self.recording_stream.stop_stream()
-            self.recording_stream.close()
+        try:
+            self.audio.terminate()
+        except:
+            pass
             
-        if hasattr(self, 'playback_stream'):
-            self.playback_stream.stop_stream()
-            self.playback_stream.close()
-            
-        self.audio.terminate()
-        self.sock.close() 
+        try:
+            self.sock.close()
+        except:
+            pass
+        
+        print("Đã dừng RTP handler") 
