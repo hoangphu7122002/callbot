@@ -29,7 +29,7 @@ class Config:
     
     # OpenAI config
     GPT_MODEL = 'gpt-4o-mini'  # hoặc model bạn đang sử dụng
-    OPENAI_API_KEY = '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'
+    OPENAI_API_KEY = 'key'
 
     # Dify config
     DIFY_API_URL = "http://127.0.0.1:25001/v1/chat-messages"
