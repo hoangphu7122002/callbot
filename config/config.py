@@ -29,7 +29,7 @@ class Config:
     
     # OpenAI config
     GPT_MODEL = 'gpt-4o-mini'  # hoặc model bạn đang sử dụng
-    OPENAI_API_KEY = 'key'
+    OPENAI_API_KEY = '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'
 
     # Dify config
     DIFY_API_URL = "http://127.0.0.1:25001/v1/chat-messages"
@@ -42,9 +42,11 @@ class Config:
 
     # RTP Settings
     RTP_LOCAL_IP = "127.0.0.1"     # Localhost
+    # RTP_LOCAL_IP = "34.29.227.22"
+
     
     # Port settings
-    USER_PORT = 5002               # Port user gửi/nhận
+    USER_PORT = 5060               # Port user gửi/nhận
     BOT_PORT = 5006               # Port bot gửi/nhận
     
     # Audio settings

@@ -18,7 +18,7 @@ class RTPBot:
             local_ip=config.RTP_LOCAL_IP,
             local_port=config.BOT_PORT,      # Bot lắng nghe ở 5006
             remote_ip=config.RTP_LOCAL_IP,
-            remote_port=config.USER_PORT,    # Bot gửi đến 5002
+            remote_port=config.USER_PORT,    # Bot gửi đến 5060
             chunk_size=config.AUDIO_CHUNK,
             sample_rate=config.AUDIO_RATE
         )
@@ -83,10 +83,11 @@ class RTPBot:
             try:
                 data, _ = self.rtp_handler.sock.recvfrom(2060)
                 audio_data = data[12:]  # Bỏ RTP header
-                # print("--------------")
-                # print("audio_data",len(audio_data))
-                # print("config.AUDIO_CHUNK",config.AUDIO_CHUNK)
-                # print("--------------")
+                print("--------------")
+                print("audio_data",len(audio_data))
+                print("config.AUDIO_CHUNK",config.AUDIO_CHUNK)
+                print("--------------")
+                print(data)
                 if len(audio_data) == config.AUDIO_CHUNK * 2:
                     # Kiểm tra âm lượng
                     volume = max(abs(int.from_bytes(audio_data[i:i+2], 'little', signed=True)) 
