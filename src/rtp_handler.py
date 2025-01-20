@@ -10,7 +10,7 @@ import time
 from queue import Queue
 
 class RTPHandler:
-    def __init__(self, uuid,local_ip="127.0.0.1", local_port=12345,
+    def __init__(self, local_ip="127.0.0.1", local_port=12345,
                  remote_ip="127.0.0.1", remote_port=12346,
                  chunk_size=1024, sample_rate=24000):
         # Cấu hình âm thanh
@@ -20,7 +20,7 @@ class RTPHandler:
         self.RATE = sample_rate
         
         # Cấu hình mạng
-`	self.uuid = uuid
+    	# self.uuid = uuid
         self.local_ip = local_ip
         self.local_port = local_port
         self.remote_ip = remote_ip

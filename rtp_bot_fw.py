@@ -4,20 +4,6 @@ import asyncio
 from rtp_bot import RTPBot  # Callbot của bạn
 import threading
 
-# def forward_rtp(uuid, rtp_host="127.0.0.1", rtp_port="5006"):
-#    """ Cấu hình FreeSWITCH để chuyển RTP đến Callbot.   """
-#    con = ESL.ESLconnection("127.0.0.1", "8021", "ClueCon")
-#    if con.connected():
-#        print(f"Connected to FreeSWITCH for call: {uuid}")
-#        
-#       # Cấu hình media bug để chuyển RTP đến Callbot
-#       command = f"uuid_media_bug_add {uuid} sendonly rtp {rtp_host}:{rtp_port}"
-#       command = f"uuid_setvar {uuid} variable_rtp_sendonly rtp {rtp_host}:{rtp_port}"
-#       response = con.api(command)
-#       print(f"Media Bug Response: {response.getBody()}")
-#   else:
-#       print("Failed to connect to FreeSWITCH.")
-
 def forward_rtp(uuid,rtp_port ,rtp_host="127.0.0.1"):
     """ 
     Cấu hình FreeSWITCH để chuyển RTP đến địa chỉ rtp_host:rtp_port.
@@ -69,7 +55,7 @@ def listen_for_calls():
 
                 # Lọc cuộc gọi đến SIP To: media@34.29.227.22:5080
                 if sip_to == "media" and sip_domain == "34.29.227.22":
-		    variable_local_media_port = e.getHeader("variable_local_media_port")
+		            variable_local_media_port = e.getHeader("variable_local_media_port")
                     print(f"New call detected with UUID: {uuid}, SIP To: {sip_to}@{sip_domain}")
                     # Chuyển RTP đến Callbot
                     start_bot(uuid, variable_local_media_port)
@@ -80,7 +66,7 @@ def start_bot(uuid, rtp_port):
     """
     Khởi động Callbot và lắng nghe RTP.
     """
-    bot = RTPBot(uuid, rtp_port)
+    bot = RTPBot(local_ip = "127.0.0.1",local_port = rtp_port,remote_ip = "127.0.0.1",remote_port = 5060,uuid = uuid)
     bot_thread = threading.Thread(target=bot.start)
     bot_thread.start()
 

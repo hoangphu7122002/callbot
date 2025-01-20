@@ -12,13 +12,14 @@ import wave
 import socket
 
 class RTPBot:
-    def __init__(self):
+    def __init__(self,local_ip = None,local_port = None,remote_ip = None,remote_port = None,uuid = "0712"):
         # Khởi tạo RTP Handler cho bot
+
         self.rtp_handler = RTPHandler(
-            local_ip=config.RTP_LOCAL_IP,
-            local_port=config.BOT_PORT,      # Bot lắng nghe ở 5006
-            remote_ip=config.RTP_LOCAL_IP,
-            remote_port=config.USER_PORT,    # Bot gửi đến 5060
+            local_ip=config.RTP_LOCAL_IP if local_ip is None else local_ip,
+            local_port=config.BOT_PORT if local_port is None else local_port,      # Bot lắng nghe ở 5006
+            remote_ip=config.RTP_LOCAL_IP if remote_ip is None else remote_ip,
+            remote_port=config.USER_PORT if remote_port is None else remote_port,    # Bot gửi đến 5060
             chunk_size=config.AUDIO_CHUNK,
             sample_rate=config.AUDIO_RATE
         )
@@ -34,6 +35,7 @@ class RTPBot:
         self.current_audio = []
         self.is_receiving = False
         self.silence_count = 0
+        self.uuid = uuid
 
     async def process_audio(self, audio_data):
         """Xử lý audio và tạo phản hồi"""
@@ -43,7 +45,7 @@ class RTPBot:
             if not user_text:
                 return
                 
-            print(f"User: {user_text}")
+            print(f"{self.uuid}: {user_text}")
             
             # Lấy phản hồi từ chatbot
             bot_response = await self.chatbot.get_response(user_text)
