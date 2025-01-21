@@ -66,6 +66,10 @@ def listen_for_calls():
                     print(e.serialize())
                     variable_local_media_port = e.getHeader("variable_local_media_port")
                     print(f"New call detected with UUID: {uuid}, SIP To: {sip_to}@{sip_domain}")
+                    # Start recording the call
+                    record_file_path = f"/home/hm1905/records/{uuid}.wav"
+                    con.api("uuid_record", f"{uuid} start {record_file_path}")
+                    print(f"Recording started: {record_file_path}")
                     # Chuyển RTP đến Callbot
                     print('media port:',variable_local_media_port)
                     forward_rtp(uuid,'')
