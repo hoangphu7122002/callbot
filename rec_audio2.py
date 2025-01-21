@@ -1,5 +1,16 @@
 import socket
 import wave
+import socket
+import wave
+import struct
+
+from freeswitchESL import ESL
+import asyncio
+#from rtp_bot import RTPBot  # Callbot của bạn
+import threading
+import socket
+import wave
+
 
 record_file_path = "/home/hm1905/records"
 
@@ -44,9 +55,9 @@ def listen_rtp(port, output_file):
                 
                 # Tách phần payload RTP
                 rtp_payload = data[12:]  # Bỏ header RTP (12 bytes)
-                
                 # Giải mã payload RTP từ PCMU sang PCM 16-bit
                 pcm_data = decode_pcmu_to_pcm16(rtp_payload)
+                print(pcm_data)
 
                 # Ghi dữ liệu PCM vào file WAV
                 wf.writeframes(pcm_data)
@@ -90,7 +101,7 @@ def listen_for_calls():
                     print(f"New call detected with UUID: {uuid}, SIP To: {sip_to}@{sip_domain}")
 
                     # Chuyển RTP đến Callbot
-                    forward_rtp(uuid, int(media_port))
+                    # forward_rtp(uuid, int(media_port))
 
                     # Lắng nghe và ghi RTP
                     output_file = f"{record_file_path}/{uuid}.wav"
