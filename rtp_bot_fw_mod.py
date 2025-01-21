@@ -3,6 +3,18 @@ from freeswitchESL import ESL
 import asyncio
 from rtp_bot import RTPBot  # Callbot của bạn
 import threading
+import socket
+import wave
+
+
+from scapy.all import sniff
+from scapy.layers.inet import UDP
+import wave
+import audioop
+import struct
+
+
+record_file_path = "/home/hm1905/records/testpy.wav"
 
 def forward_rtp(uuid,rtp_port ,rtp_host="127.0.0.1"):
     """ 
@@ -39,6 +51,9 @@ def forward_rtp(uuid,rtp_port ,rtp_host="127.0.0.1"):
         print("Failed to connect to FreeSWITCH.")
 
 
+
+
+
 def listen_for_calls():
     """
     Lắng nghe sự kiện CHANNEL_CREATE từ FreeSWITCH.
@@ -63,13 +78,14 @@ def listen_for_calls():
 
                 # Lọc cuộc gọi đến SIP To: media@34.29.227.22:5080
                 if sip_to == "media" and sip_domain == "34.29.227.22":
-                    print(e.serialize())
+                    #print(e.serialize())
                     variable_local_media_port = e.getHeader("variable_local_media_port")
                     print(f"New call detected with UUID: {uuid}, SIP To: {sip_to}@{sip_domain}")
                     # Start recording the call
-                    record_file_path = f"/home/hm1905/records/{uuid}.wav"
-                    con.api("uuid_record", f"{uuid} start {record_file_path}")
+                    #record_file_path = f"/home/hm1905/records/{uuid}.wav"
+                    #con.api("uuid_record", f"{uuid} start {record_file_path}")
                     print(f"Recording started: {record_file_path}")
+                   
                     # Chuyển RTP đến Callbot
                     print('media port:',variable_local_media_port)
                     forward_rtp(uuid,'')
