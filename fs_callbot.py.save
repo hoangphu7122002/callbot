@@ -1,4 +1,3 @@
-
 import asyncio
 import threading
 import pyaudio
@@ -74,11 +73,11 @@ class FSCallBot:
             self.esl_con.execute("playback", output_file, uuid)
             
             # Đợi 100ms để đảm bảo playback đã bắt đầu
-            await asyncio.sleep(0.1)
+            #await asyncio.sleep(0.1)
             
             # Tính thời gian playback dựa trên độ dài audio
-            audio_duration = len(audio_segment) / 1000.0  # Chuyển từ ms sang giây
-            await asyncio.sleep(audio_duration)
+            # audio_duration = len(audio_segment) / 1000.0  # Chuyển từ ms sang giây
+            # await asyncio.sleep(audio_duration)
             
             # Đánh dấu playback đã xong
             self.playback_event.clear()
@@ -127,6 +126,7 @@ class FSCallBot:
                 else:
                     silence_count += 1
                     if buffer:
+                         
                         buffer.append(pcm_data)
                 
                 # Xử lý khi đủ độ im lặng
@@ -134,7 +134,6 @@ class FSCallBot:
                     audio_data = b''.join(buffer)
                     asyncio.run(self.process_audio(audio_data, uuid))
                     buffer = []
-                    print("here")
                     silence_count = 0
                     
             except Exception as e:
@@ -154,11 +153,10 @@ class FSCallBot:
         
         # Tính thời gian của file welcome
         audio = AudioSegment.from_wav(welcome_file)
-        audio_duration = len(audio) / 1000.0  # Chuyển từ ms sang giây
+        duration = len(audio) / 1000.0  # Chuyển từ ms sang giây
         
         # Đợi playback hoàn thành
-        time.sleep(audio_duration)  # Thêm 0.1s để đảm bảo
-        # await asyncio.sleep(audio_duration)
+        time.sleep(duration + 0.1)  # Thêm 0.1s để đảm bảo
         
         # Đánh dấu playback đã xong
         self.playback_event.clear()
@@ -174,7 +172,7 @@ class FSCallBot:
                 event_name = e.getHeader("Event-Name")
 
                 if event_name == "CHANNEL_ANSWER":
-                    uuid = e.getHeader("Unique-ID")
+                   = e.getHeader("Unique-ID")
                     sip_to = e.getHeader("variable_sip_to_user")
                     sip_domain = e.getHeader("variable_sip_to_host")
                     media_port = e.getHeader("variable_local_media_port")
