@@ -64,7 +64,8 @@ class FSCallBot:
             audio_segment.export(output_file, format='wav')
             
             # Play response qua FreeSWITCH
-            self.esl_con.api("uuid_record", f"{uuid} start {output_file}")
+            self.esl_con.execute("playback",output_file, uuid);
+            #self.esl_con.api("uuid_record", f"{uuid} start {output_file}")
             
         except Exception as e:
             print(f"Lỗi khi xử lý audio: {e}")
@@ -114,8 +115,9 @@ class FSCallBot:
 
     def play_welcome_message(self, uuid):
         """Phát thông điệp chào mừng"""
-        welcome_file = "/home/hm1905/welcome.wav"  # Thay đổi đường dẫn tới file chào của bạn
-        self.esl_con.api("uuid_record", f"{uuid} start {welcome_file}")
+        welcome_file = "/home/hm1905/records/welcome.wav"  # Thay đổi đường dẫn tới file chào của bạn
+        self.esl_con.execute("playback", welcome_file, uuid);
+        #self.esl_con.api("uuid_record", f"{uuid} start {welcome_file}")
 
     def listen_for_calls(self):
         """Lắng nghe cuộc gọi từ FreeSWITCH"""
