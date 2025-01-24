@@ -73,19 +73,23 @@ def listen_for_calls():
     """
     global is_running
 
+    # Dictionary to track active calls
+    active_calls = {}
+
     con = ESL.ESLconnection("127.0.0.1", "8021", "ClueCon")
     if not con.connected():
         print("Failed to connect to FreeSWITCH.")
         return
 
-    # Subscribe to CHANNEL_ANSWER events
-    con.events("plain", "CHANNEL_ANSWER")
-    print("Listening for CHANNEL_ANSWER events...")
+    # Subscribe to CHANNEL_ANSWER and CHANNEL_HANGUP events
+    con.events("plain", "CHANNEL_ANSWER CHANNEL_HANGUP")
+    print("Listening for CHANNEL_ANSWER and CHANNEL_HANGUP events...")
 
     while True:
         e = con.recvEvent()
         if e:
             event_name = e.getHeader("Event-Name")
+
             if event_name == "CHANNEL_ANSWER":
                 uuid = e.getHeader("Unique-ID")
                 sip_to = e.getHeader("variable_sip_to_user")
@@ -96,23 +100,29 @@ def listen_for_calls():
                     print(f"New call detected with UUID: {uuid}, SIP To: {sip_to}@{sip_domain}")
 
                     output_file = f"{record_file_path}/{uuid}.wav"
-                    threading.Thread(target=listen_rtp, args=(int(media_port), output_file)).start()
-
+                    active_calls[uuid] = {
+                        "thread": threading.Thread(target=listen_rtp, args=(int(media_port), output_file)),
+                        "port": media_port
+                    }
+                    
+                    active_calls[uuid]["thread"].start()
                     is_running = True
-                    try:
-                        while is_running:
-                            e = con.recvEvent()
-                            if e and e.getHeader("Event-Name") == "CHANNEL_HANGUP":
-                                print("Call ended, stopping listener.")
-                                is_running = False
-                    except KeyboardInterrupt:
-                        print("Shutting down...")
-                        is_running = False
                 else:
                     print(f"Ignoring call with SIP To: {sip_to}@{sip_domain}")
 
+            elif event_name == "CHANNEL_HANGUP":
+                uuid = e.getHeader("Unique-ID")
+
+                if uuid in active_calls:
+                    print(f"Call with UUID: {uuid} has ended.")
+                    
+                    # Stop the thread or processing associated with the call
+                    active_calls[uuid]["thread"].join()  # Ensure thread is stopped
+                    del active_calls[uuid]  # Remove from active_calls
+
     if con:
         con.disconnect()
+
 
 
 if __name__ == "__main__":

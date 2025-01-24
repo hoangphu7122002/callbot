@@ -7,8 +7,8 @@ import socket
 import wave
 
 
-from scapy.all import sniff
-from scapy.layers.inet import UDP
+#from scapy.all import sniff
+#from scapy.layers.inet import UDP
 import wave
 import audioop
 import struct
@@ -88,8 +88,9 @@ def listen_for_calls():
                    
                     # Chuyển RTP đến Callbot
                     print('media port:',variable_local_media_port)
-                    forward_rtp(uuid,'')
-                    start_bot(uuid, int(variable_local_media_port))
+                    con.execute("playback", "/home/user1/mariage.wav", uuid);
+                    #forward_rtp(uuid,'')
+                    #start_bot(uuid, int(variable_local_media_port))
                 else:
                     print(f"Ignoring call with SIP To: {sip_to}@{sip_domain}")
 

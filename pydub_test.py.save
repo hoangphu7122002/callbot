@@ -3,7 +3,22 @@ import wave
 import struct
 from freeswitchESL import ESL
 import threading
+from pydub import AudioSegment  # Sử dụng pydub để xử lý âm thanh
+from pydub.utils import which
+Traceback (most recent call last):
+  File "/usr/lib/python3.8/threading.py", line 932, in _bootstrap_inner
+    self.run()
+  File "/usr/lib/python3.8/threading.py", line 870, in run
+    self._target(*self._args, **self._kwargs)
+  File "pydub_test.py", line 51, in listen_rtp
+    pcm_data = decode_pcmu_to_pcm16(rtp_payload)
+  File "pydub_test.py", line 18, in decode_pcmu_to_pcm16
+    decoded = AudioSegment(data=pcmu_data, sample_width=1, frame_rate=8000, channels=1, codec="ulaw")
+  File "/home/g24025013/callbot/venv/lib/python3.8/site-packages/pydub/audio_segment.py", line 258, in __init__
+    super(AudioSegment, self).__init__(*args, **kwargs)
+TypeError: object.__init__() takes exactly one argument (the instance to initialize)
 
+AudioSegment.converter = which("ffmpeg")
 record_file_path = "/home/hm1905/records"
 
 # Biến toàn cục để kiểm soát trạng thái cuộc gọi
@@ -11,18 +26,9 @@ is_running = True  # Trạng thái cuộc gọi
 
 
 def decode_pcmu_to_pcm16(pcmu_data):
-    """ Giải mã dữ liệu PCMU sang PCM 16-bit."""
-    decoded_pcm = bytearray()
-    for byte in pcmu_data:
-        ulaw_byte = ~byte & 0xFF
-        sign = (ulaw_byte & 0x80) >> 7
-        exponent = (ulaw_byte & 0x70) >> 4
-        mantissa = ulaw_byte & 0x0F
-        linear_value = ((0x21 << exponent) + (mantissa << (exponent + 3))) - 0x84
-        if sign == 0:
-            linear_value = -linear_value
-        decoded_pcm.extend(struct.pack('>h', linear_value))
-    return bytes(decoded_pcm)
+    """Giải mã dữ liệu PCMU (G.711u) sang PCM 16-bit."""
+    decoded = AudioSegment(data=pcmu_data, sample_width=1, frame_rate=8000, channels=1, codec="ulaw")
+    return decoded.raw_data
 
 
 def listen_rtp(port, output_file):
@@ -45,21 +51,22 @@ def listen_rtp(port, output_file):
 
     try:
         while is_running:
-            try:
+            #try:
                 data, addr = sock.recvfrom(2048)
                 if not data:
                     break
                 
                 # Tách phần payload RTP
                 rtp_payload = data[12:]  # Bỏ header RTP (12 bytes)
+                
                 # Giải mã payload RTP từ PCMU sang PCM 16-bit
                 pcm_data = decode_pcmu_to_pcm16(rtp_payload)
 
                 # Ghi dữ liệu PCM vào file WAV
                 wf.writeframes(pcm_data)
-            except Exception as e:
-                if is_running:
-                    print(f"Lỗi khi nhận RTP: {e}")
+            #except Exception as e:
+            #    if is_running:
+            #        print(f"Lỗi khi nhận RTP: {e}")
     except KeyboardInterrupt:
         print("Stopping RTP listener.")
     finally:

@@ -1,18 +1,17 @@
 import socket
 import wave
 import struct
-from freeswitchESL import ESL
 import threading
+from freeswitchESL import ESL
 
 record_file_path = "/home/hm1905/records"
 
 # Biến toàn cục để kiểm soát trạng thái cuộc gọi
 is_running = True  # Trạng thái cuộc gọi
 
-
-def decode_pcmu_to_pcm16(pcmu_data):
-    """ Giải mã dữ liệu PCMU sang PCM 16-bit."""
-    decoded_pcm = bytearray()
+def decode_pcmu_to_pcm16(pcmu_data, gain=2):
+    """ Giải mã dữ liệu PCMU sang PCM 16-bit và tăng âm lượng."""
+    decoded_pcm = []
     for byte in pcmu_data:
         ulaw_byte = ~byte & 0xFF
         sign = (ulaw_byte & 0x80) >> 7
@@ -21,9 +20,13 @@ def decode_pcmu_to_pcm16(pcmu_data):
         linear_value = ((0x21 << exponent) + (mantissa << (exponent + 3))) - 0x84
         if sign == 0:
             linear_value = -linear_value
-        decoded_pcm.extend(struct.pack('>h', linear_value))
-    return bytes(decoded_pcm)
 
+        # Áp dụng gain để tăng âm lượng
+        amplified_value = int(linear_value * gain)
+        amplified_value = max(min(amplified_value, 32767), -32768)  # Giới hạn giá trị
+        decoded_pcm.append(amplified_value)
+
+    return struct.pack('<' + 'h' * len(decoded_pcm), *decoded_pcm)
 
 def listen_rtp(port, output_file):
     """
@@ -49,7 +52,7 @@ def listen_rtp(port, output_file):
                 data, addr = sock.recvfrom(2048)
                 if not data:
                     break
-                
+
                 # Tách phần payload RTP
                 rtp_payload = data[12:]  # Bỏ header RTP (12 bytes)
                 # Giải mã payload RTP từ PCMU sang PCM 16-bit
@@ -65,7 +68,6 @@ def listen_rtp(port, output_file):
     finally:
         wf.close()
         sock.close()
-
 
 def listen_for_calls():
     """
@@ -113,7 +115,6 @@ def listen_for_calls():
 
     if con:
         con.disconnect()
-
 
 if __name__ == "__main__":
     try:

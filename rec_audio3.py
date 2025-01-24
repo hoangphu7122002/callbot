@@ -21,7 +21,7 @@ def decode_pcmu_to_pcm16(pcmu_data):
         linear_value = ((0x21 << exponent) + (mantissa << (exponent + 3))) - 0x84
         if sign == 0:
             linear_value = -linear_value
-        decoded_pcm.extend(struct.pack('>h', linear_value))
+        decoded_pcm.extend(struct.pack('<h', linear_value))
     return bytes(decoded_pcm)
 
 
