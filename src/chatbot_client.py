@@ -143,7 +143,7 @@ class ChatbotClient:
                 bot_response = response.choices[0].message.content
                 self.conversation_history.append({
                     "role": "assistant", 
-                    "content": bot_response
+                    "content": "Bạn là 1 callbot nên câu trả lời cần tối ưu và thuận tiện để chuyển đổi text to speech, trả lời ngắn gọn, xúc tích nhất có thể:" + bot_response
                 })
                 
                 return bot_response

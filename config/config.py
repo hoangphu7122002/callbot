@@ -12,7 +12,7 @@ class Config:
     AUDIO_CHUNK = 1024
     AUDIO_FORMAT = "paInt16" #8
     AUDIO_CHANNELS = 1
-    AUDIO_RATE = 24000
+    AUDIO_RATE = 8000
     SILENCE_THRESHOLD = 300 # Giảm ngưỡng để nhạy hơn với âm thanh
     SILENCE_CHUNKS = 60# Số chunk im lặng để dừng khi đã phát hiện tiếng nói (khoảng 2s thì dừng)
     INITIAL_SILENCE_CHUNKS = 80 # Thời gian chờ ban đầu (khoảng 3-4s thì dừng)
@@ -54,10 +54,10 @@ class Config:
     BOT_PORT = 5006               # Port bot gửi/nhận
     
     # Audio settings
-    AUDIO_CHUNK = 1024            # Chunk size phải giống nhau
-    AUDIO_RATE = 24000            # Sample rate phải giống nhau
-    AUDIO_CHANNELS = 1
-    SILENCE_THRESHOLD = 300
+    # AUDIO_CHUNK = 1024            # Chunk size phải giống nhau
+    # AUDIO_RATE = 24000            # Sample rate phải giống nhau
+    # AUDIO_CHANNELS = 1
+     # SILENCE_THRESHOLD = 300
 
 # Create a singleton instance
 config = Config()
