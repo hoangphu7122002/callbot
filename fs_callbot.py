@@ -12,6 +12,8 @@ from src.speech_processor import SpeechProcessor
 from src.chatbot_client import ChatbotClient
 from src.text_normalizer import TextNormalizer
 from config.config import config
+from threading import Event
+import time
 
 AudioSegment.converter = which("ffmpeg")
 
@@ -21,6 +23,7 @@ class FSCallBot:
         self.speech_processor = SpeechProcessor()
         self.chatbot = ChatbotClient(config)
         self.text_normalizer = TextNormalizer()
+        self.playback_event = Event()
         self.active_calls = {}
         self.is_running = True
         
@@ -63,12 +66,25 @@ class FSCallBot:
             audio_segment = AudioSegment.from_mp3(io.BytesIO(response.content))
             audio_segment.export(output_file, format='wav')
             
+            # Đánh dấu đang playback
+            self.playback_event.set()
+            
             # Play response qua FreeSWITCH
-            self.esl_con.execute("playback",output_file, uuid);
-            #self.esl_con.api("uuid_record", f"{uuid} start {output_file}")
+            self.esl_con.execute("playback", output_file, uuid)
+            
+            # Đợi 100ms để đảm bảo playback đã bắt đầu
+            await asyncio.sleep(0.1)
+            
+            # Tính thời gian playback dựa trên độ dài audio
+            audio_duration = len(audio_segment) / 1000.0  # Chuyển từ ms sang giây
+            await asyncio.sleep(audio_duration)
+            
+            # Đánh dấu playback đã xong
+            self.playback_event.clear()
             
         except Exception as e:
             print(f"Lỗi khi xử lý audio: {e}")
+            self.playback_event.clear()
 
     def handle_rtp_stream(self, port, uuid):
         """Xử lý luồng RTP cho mỗi cuộc gọi"""
@@ -81,7 +97,17 @@ class FSCallBot:
         
         while self.is_running and uuid in self.active_calls:
             try:
-                data, _ = sock.recvfrom(1024)
+                # Kiểm tra nếu đang playback thì bỏ qua việc đọc socket
+                if self.playback_event.is_set():
+                    continue
+                    
+                # Set timeout cho socket để có thể check playback_event thường xuyên
+                sock.settimeout(0.1)
+                try:
+                    data, _ = sock.recvfrom(1024)
+                except socket.timeout:
+                    continue
+                
                 if not data:
                     continue
                 
@@ -115,9 +141,23 @@ class FSCallBot:
 
     def play_welcome_message(self, uuid):
         """Phát thông điệp chào mừng"""
-        welcome_file = "/home/hm1905/records/welcome.wav"  # Thay đổi đường dẫn tới file chào của bạn
-        self.esl_con.execute("playback", welcome_file, uuid);
-        #self.esl_con.api("uuid_record", f"{uuid} start {welcome_file}")
+        welcome_file = "/home/hm1905/records/welcome.wav"
+        
+        # Đánh dấu đang playback
+        self.playback_event.set()
+        
+        # Play welcome message
+        self.esl_con.execute("playback", welcome_file, uuid)
+        
+        # Tính thời gian của file welcome
+        audio = AudioSegment.from_wav(welcome_file)
+        duration = len(audio) / 1000.0  # Chuyển từ ms sang giây
+        
+        # Đợi playback hoàn thành
+        time.sleep(duration + 0.1)  # Thêm 0.1s để đảm bảo
+        
+        # Đánh dấu playback đã xong
+        self.playback_event.clear()
 
     def listen_for_calls(self):
         """Lắng nghe cuộc gọi từ FreeSWITCH"""

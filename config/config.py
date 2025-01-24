@@ -1,3 +1,8 @@
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 class Config:
     # API Endpoints
     TTS_WEBSOCKET_URL = "ws://localhost:38001/ws/generate_speech/"
@@ -29,7 +34,7 @@ class Config:
     
     # OpenAI config
     GPT_MODEL = 'gpt-4o-mini'  # hoặc model bạn đang sử dụng
-    OPENAI_API_KEY = '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'
+    OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 
     # Dify config
     DIFY_API_URL = "http://127.0.0.1:25001/v1/chat-messages"
