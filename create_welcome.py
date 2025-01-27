@@ -8,7 +8,7 @@ def create_welcome_message():
     chatbot = ChatbotClient(config)
     
     # Text chào mừng
-    welcome_text = "Xin chào, tôi là trợ lý ảo của trung tâm Ây ai Vi Ti S. Tôi có thể giúp gì cho bạn ?"
+    welcome_text = "Xin chào sếp Trung, tôi là trợ lý ảo của trung tâm Ây ai Vi Ti S. Tôi có thể giúp gì cho sếp ?"
     
     # Tạo audio từ text
     response = chatbot.client.audio.speech.create(
@@ -19,7 +19,7 @@ def create_welcome_message():
     
     # Chuyển đổi và lưu file
     audio_segment = AudioSegment.from_mp3(io.BytesIO(response.content))
-    audio_segment.export("/home/hm1905/records/welcome.wav", format='wav')
+    audio_segment.export("/home/hm1905/records/welcome_trung.wav", format='wav')
 
 if __name__ == "__main__":
     create_welcome_message() 

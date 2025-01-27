@@ -192,7 +192,7 @@ class FSCallBotSimple:
 
     async def play_welcome_message(self, uuid):
         """Phát thông điệp chào mừng"""
-        welcome_file = "/home/hm1905/records/welcome.wav"
+        welcome_file = "/home/hm1905/records/welcome_trung.wav"
         self.playback_event.set()
         self.esl_con.execute("playback", welcome_file, uuid)
         
