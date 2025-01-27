@@ -34,7 +34,7 @@ class Config:
     
     # OpenAI config
     GPT_MODEL = 'gpt-4o-mini'  # hoặc model bạn đang sử dụng
-    OPENAI_API_KEY = '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'
+    OPENAI_API_KEY = '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'
     # Dify config
     DIFY_API_URL = "http://127.0.0.1:25001/v1/chat-messages"
     DIFY_API_KEY = "app-36WvU65NrwXoMOl9bkwb23yG"

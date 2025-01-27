@@ -53,6 +53,11 @@ class FSCallBotSimple:
             
             # Tạo task xử lý chính
             async def main_processing():
+                if not audio_data:  # Trường hợp im lặng quá lâu
+                    confirmation_text = "anh chị có cần gì nữa không ạ"
+                    print(f"Bot to {uuid} (silence prompt): {confirmation_text}")
+                    return confirmation_text
+                    
                 # Chuyển audio thành text
                 a = time.time()
                 user_text = await self.speech_processor.speech_to_text(audio_data)
@@ -72,22 +77,8 @@ class FSCallBotSimple:
                 b = time.time()
                 print("llm answer: ", b - a)
                 print(f"Bot response to {uuid}: {normalized_response}")
-
-                # Chuyển text thành speech và lưu file
-                a = time.time()
-                response = self.chatbot.client.audio.speech.create(
-                    model="tts-1",
-                    voice=config.TTS_OPENAI_VOICE,
-                    input=normalized_response
-                )
                 
-                output_file = f"/home/hm1905/records/response_{uuid}.wav"
-                audio_segment = AudioSegment.from_mp3(io.BytesIO(response.content))
-                audio_segment.export(output_file, format='wav')
-                b = time.time()
-                print("text to speech and save: ", b - a)
-                
-                return output_file, audio_segment
+                return normalized_response
 
             # Chạy song song processing_task và main_processing
             main_task = asyncio.create_task(main_processing())
@@ -100,7 +91,7 @@ class FSCallBotSimple:
             
             # Nếu processing_task hoàn thành trước, đợi main_task
             if processing_task in done:
-                result = await main_task
+                response_text = await main_task
             else:
                 # Nếu main_task hoàn thành trước, hủy processing_task
                 processing_task.cancel()
@@ -108,13 +99,25 @@ class FSCallBotSimple:
                     await processing_task
                 except asyncio.CancelledError:
                     pass
-                result = main_task.result()
+                response_text = main_task.result()
                 
-            if not result:
+            if not response_text:
                 return
                 
-            output_file, audio_segment = result
-                
+            # Chuyển text thành speech và lưu file
+            a = time.time()
+            response = self.chatbot.client.audio.speech.create(
+                model="tts-1",
+                voice=config.TTS_OPENAI_VOICE,
+                input=response_text
+            )
+            
+            output_file = f"/home/hm1905/records/response_{uuid}.wav"
+            audio_segment = AudioSegment.from_mp3(io.BytesIO(response.content))
+            audio_segment.export(output_file, format='wav')
+            b = time.time()
+            print("text to speech and save: ", b - a)
+            
             # Play response qua FreeSWITCH
             a = time.time()
             self.esl_con.execute("uuid_setvar", f"{uuid} playback_terminators none")
@@ -175,11 +178,11 @@ class FSCallBotSimple:
                 else:
                     if is_buffering:  # Chỉ tính silence khi đang trong quá trình buffer
                         silence_count += 1
-                        buffer.append(pcm_data)
+                        # buffer.append(pcm_data)
                 
                 # Xử lý khi đủ độ im lặng và có dữ liệu trong buffer
-                if is_buffering and silence_count > 120+60 and buffer:  # ~4s im lặng
-                    audio_data = b''.join(buffer)
+                if is_buffering and silence_count > 120:  # ~4s im lặng
+                    audio_data = b''.join(buffer) if len(buffer) > 1 else None
                     await self.process_audio(audio_data, uuid)
                     buffer = []
                     silence_count = 0
@@ -241,4 +244,4 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"Lỗi: {e}") 
     finally:
-        bot.is_running = False 
+        bot.is_running = False

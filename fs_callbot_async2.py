@@ -170,6 +170,7 @@ class FSCallBotSimple:
                         is_buffering = True
                         buffer = []  # Reset buffer khi bắt đầu ghi âm mới
                     silence_count = 0
+                    print(pcm_data)
                     buffer.append(pcm_data)
                 else:
                     if is_buffering:  # Chỉ tính silence khi đang trong quá trình buffer

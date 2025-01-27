@@ -44,12 +44,23 @@ class FSCallBotSimple:
         audio = AudioSegment.from_wav(processing_file)
         await asyncio.sleep(len(audio) / 1000.0)
 
+    async def check_hangup(self, uuid):
+        """Kiểm tra sự kiện hangup"""
+        while True:
+            e = self.esl_con.recvEventTimed(0)
+            if e:
+                event_name = e.getHeader("Event-Name")
+                if event_name == "CHANNEL_HANGUP":
+                    current_uuid = e.getHeader("Unique-ID")
+                    if current_uuid == uuid:
+                        print(f"Phát hiện cuộc gọi kết thúc: {uuid}")
+                        return "HANGUP"
+            await asyncio.sleep(0.1)
+
     async def process_audio(self, audio_data, uuid):
         """Xử lý audio và tạo phản hồi"""
         try:
-            # Bắt đầu phát thông báo đang xử lý song song với xử lý chính
             self.playback_event.set()
-            processing_task = asyncio.create_task(self.play_processing_message(uuid))
             
             # Tạo task xử lý chính
             async def main_processing():
@@ -66,7 +77,7 @@ class FSCallBotSimple:
                 
                 # Lấy phản hồi từ chatbot
                 a = time.time()
-                bot_response = await self.chatbot.get_response("bạn là callbot của VTS dưới sự lãnh đạo sếp Trung, trả lời ngắn gọn, xúc tích và hạn chế sinh ra dấu câu như . hoặc ,: \ncâu hỏin là callbot của VTS dưới sự lãnh đạo sếp Trung, trả lời ngắn gọn, xúc tích và hạn chế sinh ra dấu câu như . hoặc , trả lời lễ phép: \ncâu hỏi của sếp Trung:" + user_text)
+                bot_response = await self.chatbot.get_response("bạn là callbot của trung tâm VTS, dưới sự lãnh đạo của sếp Trung, hãy trả lời ngắn gọn, xúc tích, hạn chế sinh dấu . và , ngoài ra trả lời lễ phép và nhắc lại sếp Trung cần gì nữa không:\ncâu hỏi của sếp Trung:" + user_text)
                 bot_response, _ = self.text_normalizer.check_end_conversation(bot_response)
                 normalized_response = self.text_normalizer.normalize_vietnamese_text(bot_response)
                 b = time.time()
@@ -89,14 +100,23 @@ class FSCallBotSimple:
                 
                 return output_file, audio_segment
 
-            # Chạy song song processing_task và main_processing
+            # Tạo 3 task chạy song song
+            processing_task = asyncio.create_task(self.play_processing_message(uuid))
             main_task = asyncio.create_task(main_processing())
+            hangup_task = asyncio.create_task(self.check_hangup(uuid))
             
-            # Đợi một trong hai task hoàn thành trước
+            # Đợi một trong các task hoàn thành
             done, pending = await asyncio.wait(
-                [processing_task, main_task],
+                [processing_task, main_task, hangup_task],
                 return_when=asyncio.FIRST_COMPLETED
             )
+            
+            # Xử lý kết quả dựa trên task hoàn thành đầu tiên
+            if hangup_task in done:
+                # Nếu hangup_task hoàn thành trước, hủy các task khác
+                for task in pending:
+                    task.cancel()
+                return "HANGUP"
             
             # Nếu processing_task hoàn thành trước, đợi main_task
             if processing_task in done:
@@ -104,8 +124,10 @@ class FSCallBotSimple:
             else:
                 # Nếu main_task hoàn thành trước, hủy processing_task
                 processing_task.cancel()
+                hangup_task.cancel()
                 try:
                     await processing_task
+                    await hangup_task
                 except asyncio.CancelledError:
                     pass
                 result = main_task.result()
@@ -123,10 +145,15 @@ class FSCallBotSimple:
             # Tính thời gian playback dựa trên độ dài audio
             audio_duration = len(audio_segment) / 1000.0
             print("audio_duration: ", audio_duration)
-            await asyncio.sleep(audio_duration + 0.2)  # Thêm 0.2s để đảm bảo playback hoàn tất
+            await asyncio.sleep(audio_duration + 0.2)
             
             b = time.time()
             print("playback time: ", b - a)
+
+            # Kiểm tra kết quả từ hangup_task
+            # if not hangup_task.done():
+            #    hangup_task.cancel()
+            #    print("Cuộc gọi vẫn tiếp diễn, round tiếp theo:")
             
         except Exception as e:
             print(f"Lỗi khi xử lý audio: {e}")
@@ -178,9 +205,11 @@ class FSCallBotSimple:
                         buffer.append(pcm_data)
                 
                 # Xử lý khi đủ độ im lặng và có dữ liệu trong buffer
-                if is_buffering and silence_count > 120+60 and buffer:  # ~4s im lặng
+                if is_buffering and silence_count > 120 and buffer:  # ~2s im lặng
                     audio_data = b''.join(buffer)
-                    await self.process_audio(audio_data, uuid)
+                    result = await self.process_audio(audio_data, uuid)
+                    if result == "HANGUP":  # Kiểm tra nếu cuộc gọi đã kết thúc
+                        break
                     buffer = []
                     silence_count = 0
                     is_buffering = False  # Reset trạng thái buffering
@@ -189,6 +218,7 @@ class FSCallBotSimple:
                 print(f"Lỗi trong handle_rtp_stream: {e}")
         
         sock.close()
+        print(f"RTP stream ended for call {uuid}")
 
     async def play_welcome_message(self, uuid):
         """Phát thông điệp chào mừng"""

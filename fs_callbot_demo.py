@@ -66,7 +66,7 @@ class FSCallBotSimple:
                 
                 # Lấy phản hồi từ chatbot
                 a = time.time()
-                bot_response = await self.chatbot.get_response("bạn là callbot của VTS dưới sự lãnh đạo sếp Trung, trả lời ngắn gọn, xúc tích và hạn chế sinh ra dấu câu như . hoặc ,: \ncâu hỏin là callbot của VTS dưới sự lãnh đạo sếp Trung, trả lời ngắn gọn, xúc tích và hạn chế sinh ra dấu câu như . hoặc , trả lời lễ phép: \ncâu hỏi của sếp Trung:" + user_text)
+                bot_response = await self.chatbot.get_response("bạn là callbot của trung tâm VTS, dưới sự lãnh đạo của sếp Trung, hãy trả lời ngắn gọn, xúc tích, hạn chế sinh dấu . và ,:\ncâu hỏi của sếp Trung:" + user_text)
                 bot_response, _ = self.text_normalizer.check_end_conversation(bot_response)
                 normalized_response = self.text_normalizer.normalize_vietnamese_text(bot_response)
                 b = time.time()
@@ -127,12 +127,41 @@ class FSCallBotSimple:
             
             b = time.time()
             print("playback time: ", b - a)
+
+            # Kiểm tra hangup sau khi xử lý audio xong
+            e = self.esl_con.recvEvent()
+            if e:
+                print("check_hanup")
+                event_name = e.getHeader("Event-Name")
+                if event_name == "CHANNEL_HANGUP":
+                    current_uuid = e.getHeader("Unique-ID")
+                    if current_uuid == uuid:
+                        print(f"Phát hiện cuộc gọi kết thúc sau khi xử lý audio: {uuid}")
+                        self.playback_event_clear()
+                        return "HANGUP"
+            else:
+                print("Cuộc gọi vẫn tiếp diễn, round tiếp theo:")
             
         except Exception as e:
             print(f"Lỗi khi xử lý audio: {e}")
         finally:
             self.playback_event.clear()
 
+    # async def check_hangup(self, uuid):
+    #     """Kiểm tra sự kiện hangup"""
+    #     while True:
+    #         e = self.esl_con.recvEventTimed(0)
+    #         if e:
+    #             event_name = e.getHeader("Event-Name")
+    #             if event_name == "CHANNEL_HANGUP":
+    #                 current_uuid = e.getHeader("Unique-ID")
+    #                 if current_uuid == uuid:
+    #                     print(f"Phát hiện cuộc gọi kết thúc: {uuid}")
+    #                     return True
+    #         else:
+    #             print("Cuộc gọi vẫn tiếp diễn, round tiếp theo:")
+    #         await asyncio.sleep(0.1)
+            
     async def handle_rtp_stream(self, port, uuid):
         """Xử lý luồng RTP cho cuộc gọi"""
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -178,9 +207,11 @@ class FSCallBotSimple:
                         buffer.append(pcm_data)
                 
                 # Xử lý khi đủ độ im lặng và có dữ liệu trong buffer
-                if is_buffering and silence_count > 120+60 and buffer:  # ~4s im lặng
+                if is_buffering and silence_count > 120 and buffer:  # ~2s im lặng
                     audio_data = b''.join(buffer)
-                    await self.process_audio(audio_data, uuid)
+                    result = await self.process_audio(audio_data, uuid)
+                    if result == "HANGUP":  # Kiểm tra nếu cuộc gọi đã kết thúc
+                        break
                     buffer = []
                     silence_count = 0
                     is_buffering = False  # Reset trạng thái buffering
@@ -189,6 +220,7 @@ class FSCallBotSimple:
                 print(f"Lỗi trong handle_rtp_stream: {e}")
         
         sock.close()
+        print(f"RTP stream ended for call {uuid}")
 
     async def play_welcome_message(self, uuid):
         """Phát thông điệp chào mừng"""

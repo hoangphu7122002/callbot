@@ -25,7 +25,8 @@ class FSCallBotSimple:
         self.playback_event = Event()
         self.active_call = None
         self.is_running = True
-
+        self.rtp_task = None
+        
         # ESL connection
         self.esl_con = ESL.ESLconnection("127.0.0.1", "8021", "ClueCon")
         if not self.esl_con.connected():
@@ -66,7 +67,7 @@ class FSCallBotSimple:
                 
                 # Lấy phản hồi từ chatbot
                 a = time.time()
-                bot_response = await self.chatbot.get_response("bạn là callbot của VTS dưới sự lãnh đạo sếp Trung, trả lời ngắn gọn, xúc tích và hạn chế sinh ra dấu câu như . hoặc ,: \ncâu hỏin là callbot của VTS dưới sự lãnh đạo sếp Trung, trả lời ngắn gọn, xúc tích và hạn chế sinh ra dấu câu như . hoặc , trả lời lễ phép: \ncâu hỏi của sếp Trung:" + user_text)
+                bot_response = await self.chatbot.get_response(user_text)
                 bot_response, _ = self.text_normalizer.check_end_conversation(bot_response)
                 normalized_response = self.text_normalizer.normalize_vietnamese_text(bot_response)
                 b = time.time()
@@ -143,12 +144,12 @@ class FSCallBotSimple:
         silence_count = 0
         is_buffering = False
         
-        while True:
+        while self.is_running and self.active_call == uuid:
             try:
                 if self.playback_event.is_set():
                     await asyncio.sleep(0.1)
                     continue
-                    
+                
                 sock.settimeout(0.1)
                 try:
                     data, _ = sock.recvfrom(1024)
@@ -170,15 +171,15 @@ class FSCallBotSimple:
                         is_buffering = True
                         buffer = []  # Reset buffer khi bắt đầu ghi âm mới
                     silence_count = 0
-                    buffer.append(pcm_data)
                     print(pcm_data)
+                    buffer.append(pcm_data)
                 else:
                     if is_buffering:  # Chỉ tính silence khi đang trong quá trình buffer
                         silence_count += 1
                         buffer.append(pcm_data)
                 
                 # Xử lý khi đủ độ im lặng và có dữ liệu trong buffer
-                if is_buffering and silence_count > 120+60 and buffer:  # ~4s im lặng
+                if is_buffering and silence_count > 120 and buffer:  # ~2s im lặng
                     audio_data = b''.join(buffer)
                     await self.process_audio(audio_data, uuid)
                     buffer = []
@@ -188,6 +189,7 @@ class FSCallBotSimple:
             except Exception as e:
                 print(f"Lỗi trong handle_rtp_stream: {e}")
         
+        print(f"Kết thúc xử lý RTP cho UUID {uuid}")
         sock.close()
 
     async def play_welcome_message(self, uuid):
@@ -206,13 +208,41 @@ class FSCallBotSimple:
         self.esl_con.events("plain", "CHANNEL_ANSWER CHANNEL_HANGUP")
         print("Đang lắng nghe cuộc gọi...")
 
-        # while True:
+        async def handle_call(uuid, media_port):
+            """Xử lý một cuộc gọi cụ thể"""
+            try:
+                # Phát thông điệp chào mừng
+                await self.play_welcome_message(uuid)
+                
+                # Xử lý RTP stream
+                await self.handle_rtp_stream(int(media_port), uuid)
+            except asyncio.CancelledError:
+                print(f"Cuộc gọi {uuid} đã bị hủy")
+            except Exception as e:
+                print(f"Lỗi khi xử lý cuộc gọi {uuid}: {e}")
+
         while self.is_running:
-            e = self.esl_con.recvEvent()
-            if e:
+            try:
+                e = self.esl_con.recvEvent()
+                if not e:
+                    await asyncio.sleep(0.1)
+                    continue
+
                 event_name = e.getHeader("Event-Name")
 
-                if event_name == "CHANNEL_ANSWER":
+                if event_name == "CHANNEL_HANGUP":
+                    uuid = e.getHeader("Unique-ID")
+                    if uuid == self.active_call:
+                        print(f"Cuộc gọi kết thúc: UUID {uuid}")
+                        self.active_call = None
+                        if self.rtp_task and not self.rtp_task.done():
+                            self.rtp_task.cancel()
+                            try:
+                                await self.rtp_task
+                            except asyncio.CancelledError:
+                                print(f"Đã hủy xử lý cuộc gọi {uuid}")
+
+                elif event_name == "CHANNEL_ANSWER":
                     uuid = e.getHeader("Unique-ID")
                     sip_to = e.getHeader("variable_sip_to_user")
                     sip_domain = e.getHeader("variable_sip_to_host")
@@ -220,17 +250,29 @@ class FSCallBotSimple:
 
                     if sip_to == "media" and sip_domain == "34.29.227.22":
                         print(f"Cuộc gọi mới: UUID {uuid}")
-                        self.active_call = uuid
-                        # Phát thông điệp chào mừng
-                        await self.play_welcome_message(uuid)
                         
-                        # Xử lý RTP stream
-                        await self.handle_rtp_stream(int(media_port), uuid)
-                elif event_name == "CHANNEL_HANGUP":
-                    uuid = e.getHeader("Unique-ID")
-                    if uuid == self.active_call:
-                        print(f"Cuộc gọi kết thúc: UUID {uuid}")
-                        self.active_call = None
+                        # Hủy cuộc gọi cũ nếu có
+                        if self.active_call and self.rtp_task and not self.rtp_task.done():
+                            print(f"Hủy cuộc gọi cũ {self.active_call}")
+                            self.rtp_task.cancel()
+                            try:
+                                await self.rtp_task
+                            except asyncio.CancelledError:
+                                pass
+
+                        self.active_call = uuid
+                        # Tạo task mới cho cuộc gọi
+                        self.rtp_task = asyncio.create_task(
+                            handle_call(uuid, media_port)
+                        )
+
+            except Exception as e:
+                print(f"Lỗi trong listen_for_calls: {e}")
+                await asyncio.sleep(1)  # Tránh loop quá nhanh khi có lỗi
+
+            # Cho phép các event khác được xử lý
+            await asyncio.sleep(0.1)
+
 if __name__ == "__main__":
     try:
         bot = FSCallBotSimple()
@@ -238,7 +280,9 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("Đang dừng...")
         bot.is_running = False
+        if bot.rtp_task:
+            bot.rtp_task.cancel()
     except Exception as e:
-        print(f"Lỗi: {e}") 
+        print(f"Lỗi: {e}")
     finally:
         bot.is_running = False 

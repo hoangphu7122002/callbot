@@ -44,77 +44,139 @@ class FSCallBotSimple:
         audio = AudioSegment.from_wav(processing_file)
         await asyncio.sleep(len(audio) / 1000.0)
 
+    async def check_hangup(self, uuid):
+        """Kiểm tra sự kiện hangup"""
+        try:
+            # print("here Hangup")
+            e = self.esl_con.recvEventTimed(1)  # Timeout 1 giây
+            if e:
+                event_name = e.getHeader("Event-Name")
+                if event_name == "CHANNEL_HANGUP":
+                    current_uuid = e.getHeader("Unique-ID")
+                    if current_uuid == uuid:
+                        print(f"Phát hiện cuộc gọi kết thúc: {uuid}")
+                        return "HANGUP"
+            return None
+        except Exception as e:
+            print(f"Lỗi trong check_hangup: {e}")
+            return None
+
     async def process_audio(self, audio_data, uuid):
         """Xử lý audio và tạo phản hồi"""
         try:
-            # Bắt đầu phát thông báo đang xử lý song song với xử lý chính
             self.playback_event.set()
-            processing_task = asyncio.create_task(self.play_processing_message(uuid))
             
             # Tạo task xử lý chính
             async def main_processing():
+                if audio_data is None:  # Trường hợp im lặng quá lâu
+                    confirmation_text = "anh chị có cần gì nữa không ạ"
+                    print(f"Bot to {uuid} (silence prompt): {confirmation_text}")
+                    return confirmation_text
+                    
                 # Chuyển audio thành text
                 a = time.time()
                 user_text = await self.speech_processor.speech_to_text(audio_data)
                 b = time.time()
                 print("speech to text: ", b - a)
                 
+                # Kiểm tra hangup sau speech-to-text
+                if await self.check_hangup(uuid) == "HANGUP":
+                    return "HANGUP"
+                
                 if not user_text:
                     return None
                     
                 print(f"User {uuid}: {user_text}")
                 
+                # Kiểm tra từ khóa kết thúc
+                if self.chatbot.should_end_conversation(user_text.lower()) or user_text.lower() == "không":
+                    print(f"Phát hiện từ khóa kết thúc: {user_text}")
+                    goodbye_text = "cảm ơn anh chị đã sử dụng dịch vụ tạm biệt ạ"
+                    # Phát thông báo tạm biệt
+                    response = self.chatbot.client.audio.speech.create(
+                        model="tts-1",
+                        voice=config.TTS_OPENAI_VOICE,
+                        input=goodbye_text
+                    )
+                    output_file = f"/home/hm1905/records/goodbye_{uuid}.wav"
+                    audio_segment = AudioSegment.from_mp3(io.BytesIO(response.content))
+                    audio_segment.export(output_file, format='wav')
+                    self.esl_con.execute("playback", output_file, uuid)
+                    await asyncio.sleep(len(audio_segment) / 1000.0)
+                    
+                    # Kết thúc cuộc gọi
+                    self.esl_con.api("uuid_kill", uuid)
+                    return "HANGUP"
+
                 # Lấy phản hồi từ chatbot
                 a = time.time()
-                bot_response = await self.chatbot.get_response("bạn là callbot của VTS dưới sự lãnh đạo sếp Trung, trả lời ngắn gọn, xúc tích và hạn chế sinh ra dấu câu như . hoặc ,: \ncâu hỏin là callbot của VTS dưới sự lãnh đạo sếp Trung, trả lời ngắn gọn, xúc tích và hạn chế sinh ra dấu câu như . hoặc , trả lời lễ phép: \ncâu hỏi của sếp Trung:" + user_text)
+                bot_response = await self.chatbot.get_response("bạn là callbot của VTS, trả lời ngắn gọn, xúc tích và hạn chế sinh ra dấu câu như . hoặc ,: \ncâu hỏin là callbot của VTS dưới sự lãnh đạo sếp Trung, trả lời ngắn gọn, xúc tích và hạn chế sinh ra dấu câu như . hoặc , trả lời lễ phép: \ncâu hỏi của anh chị:" + user_text)
                 bot_response, _ = self.text_normalizer.check_end_conversation(bot_response)
                 normalized_response = self.text_normalizer.normalize_vietnamese_text(bot_response)
                 b = time.time()
                 print("llm answer: ", b - a)
                 print(f"Bot response to {uuid}: {normalized_response}")
+                
+                # Kiểm tra hangup sau khi có response từ chatbot
+                if await self.check_hangup(uuid) == "HANGUP":
+                    return "HANGUP"
+                
+                return normalized_response
 
-                # Chuyển text thành speech và lưu file
-                a = time.time()
-                response = self.chatbot.client.audio.speech.create(
-                    model="tts-1",
-                    voice=config.TTS_OPENAI_VOICE,
-                    input=normalized_response
+            # Chạy processing_message song song với main_processing nếu có audio
+            if audio_data:
+                processing_task = asyncio.create_task(self.play_processing_message(uuid))
+                main_task = asyncio.create_task(main_processing())
+                
+                # Đợi một trong hai task hoàn thành
+                done, pending = await asyncio.wait(
+                    [processing_task, main_task],
+                    return_when=asyncio.FIRST_COMPLETED
                 )
                 
-                output_file = f"/home/hm1905/records/response_{uuid}.wav"
-                audio_segment = AudioSegment.from_mp3(io.BytesIO(response.content))
-                audio_segment.export(output_file, format='wav')
-                b = time.time()
-                print("text to speech and save: ", b - a)
-                
-                return output_file, audio_segment
-
-            # Chạy song song processing_task và main_processing
-            main_task = asyncio.create_task(main_processing())
-            
-            # Đợi một trong hai task hoàn thành trước
-            done, pending = await asyncio.wait(
-                [processing_task, main_task],
-                return_when=asyncio.FIRST_COMPLETED
-            )
-            
-            # Nếu processing_task hoàn thành trước, đợi main_task
-            if processing_task in done:
-                result = await main_task
+                # Nếu processing_task hoàn thành trước, đợi main_task
+                if processing_task in done:
+                    response_text = await main_task
+                else:
+                    # Nếu main_task hoàn thành trước, hủy processing_task
+                    processing_task.cancel()
+                    try:
+                        await processing_task
+                    except asyncio.CancelledError:
+                        pass
+                    response_text = main_task.result()
             else:
-                # Nếu main_task hoàn thành trước, hủy processing_task
-                processing_task.cancel()
-                try:
-                    await processing_task
-                except asyncio.CancelledError:
-                    pass
-                result = main_task.result()
-                
-            if not result:
+                # Nếu không có audio, chỉ chạy main_processing
+                response_text = await main_processing()
+
+            if not response_text:
                 return
                 
-            output_file, audio_segment = result
+            if response_text == "HANGUP":
+                return "HANGUP"
+
+            # Kiểm tra hangup trước khi text-to-speech
+            if await self.check_hangup(uuid) == "HANGUP":
+                return "HANGUP"
                 
+            # Chuyển text thành speech và lưu file
+            a = time.time()
+            response = self.chatbot.client.audio.speech.create(
+                model="tts-1",
+                voice=config.TTS_OPENAI_VOICE,
+                input=response_text
+            )
+            
+            output_file = f"/home/hm1905/records/response_{uuid}.wav"
+            audio_segment = AudioSegment.from_mp3(io.BytesIO(response.content))
+            audio_segment.export(output_file, format='wav')
+            b = time.time()
+            print("text to speech and save: ", b - a)
+            
+            # Kiểm tra hangup trước khi playback
+            if await self.check_hangup(uuid) == "HANGUP":
+                return "HANGUP"
+            
             # Play response qua FreeSWITCH
             a = time.time()
             self.esl_con.execute("uuid_setvar", f"{uuid} playback_terminators none")
@@ -127,7 +189,7 @@ class FSCallBotSimple:
             
             b = time.time()
             print("playback time: ", b - a)
-            
+
         except Exception as e:
             print(f"Lỗi khi xử lý audio: {e}")
         finally:
@@ -142,9 +204,14 @@ class FSCallBotSimple:
         buffer = []
         silence_count = 0
         is_buffering = False
+        last_response_was_confirmation = False  # Thêm biến này để theo dõi
         
         while True:
             try:
+                # Kiểm tra hangup trước khi nhận RTP packet
+                if await self.check_hangup(uuid) == "HANGUP":
+                    break
+
                 if self.playback_event.is_set():
                     await asyncio.sleep(0.1)
                     continue
@@ -171,24 +238,53 @@ class FSCallBotSimple:
                         buffer = []  # Reset buffer khi bắt đầu ghi âm mới
                     silence_count = 0
                     buffer.append(pcm_data)
-                    print(pcm_data)
                 else:
                     if is_buffering:  # Chỉ tính silence khi đang trong quá trình buffer
                         silence_count += 1
-                        buffer.append(pcm_data)
+                        # buffer.append(pcm_data)
+                
+                # Kiểm tra hangup trước khi xử lý buffer đầy
+                if await self.check_hangup(uuid) == "HANGUP":
+                    break
                 
                 # Xử lý khi đủ độ im lặng và có dữ liệu trong buffer
-                if is_buffering and silence_count > 120+60 and buffer:  # ~4s im lặng
-                    audio_data = b''.join(buffer)
-                    await self.process_audio(audio_data, uuid)
+                if is_buffering and silence_count > 120:  # ~4s im lặng
+                    audio_data = b''.join(buffer) if len(buffer) > 3 else None
+                    
+                    result = await self.process_audio(audio_data, uuid)
+                    if result == "HANGUP":  # Kiểm tra nếu cuộc gọi đã kết thúc
+                        break
+                        
+                    # Nếu audio_data là None và lần trước đã hỏi xác nhận
+                    if audio_data is None and last_response_was_confirmation:
+                        print("Không nhận được phản hồi sau câu hỏi xác nhận, kết thúc cuộc gọi")
+                        goodbye_text = "cảm ơn anh chị đã sử dụng dịch vụ tạm biệt ạ"
+                        response = self.chatbot.client.audio.speech.create(
+                            model="tts-1",
+                            voice=config.TTS_OPENAI_VOICE,
+                            input=goodbye_text
+                        )
+                        output_file = f"/home/hm1905/records/goodbye_{uuid}.wav"
+                        audio_segment = AudioSegment.from_mp3(io.BytesIO(response.content))
+                        audio_segment.export(output_file, format='wav')
+                        self.esl_con.execute("playback", output_file, uuid)
+                        await asyncio.sleep(len(audio_segment) / 1000.0)
+                        self.esl_con.api("uuid_kill", uuid)
+                        break
+                    
+                    # Cập nhật trạng thái xác nhận
+                    last_response_was_confirmation = (audio_data is None)
+                    
                     buffer = []
                     silence_count = 0
-                    is_buffering = False  # Reset trạng thái buffering
-                    
+                    is_buffering = False
+
             except Exception as e:
                 print(f"Lỗi trong handle_rtp_stream: {e}")
         
         sock.close()
+        print(f"RTP stream ended for call {uuid}")
+        return 
 
     async def play_welcome_message(self, uuid):
         """Phát thông điệp chào mừng"""
@@ -241,4 +337,4 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"Lỗi: {e}") 
     finally:
-        bot.is_running = False 
+        bot.is_running = False

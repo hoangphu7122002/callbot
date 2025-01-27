@@ -48,11 +48,16 @@ class FSCallBotSimple:
         """Xử lý audio và tạo phản hồi"""
         try:
             # Bắt đầu phát thông báo đang xử lý song song với xử lý chính
-            self.playback_event.set()
-            processing_task = asyncio.create_task(self.play_processing_message(uuid))
+            # self.playback_event.set()
+            # processing_task = asyncio.create_task(self.play_processing_message(uuid))
             
             # Tạo task xử lý chính
             async def main_processing():
+                if not audio_data:  # Trường hợp im lặng quá lâu
+                    confirmation_text = "anh chị có cần gì nữa không ạ"
+                    print(f"Bot to {uuid} (silence prompt): {confirmation_text}")
+                    return confirmation_text
+                    
                 # Chuyển audio thành text
                 a = time.time()
                 user_text = await self.speech_processor.speech_to_text(audio_data)
@@ -66,55 +71,59 @@ class FSCallBotSimple:
                 
                 # Lấy phản hồi từ chatbot
                 a = time.time()
-                bot_response = await self.chatbot.get_response("bạn là callbot của VTS dưới sự lãnh đạo sếp Trung, trả lời ngắn gọn, xúc tích và hạn chế sinh ra dấu câu như . hoặc ,: \ncâu hỏin là callbot của VTS dưới sự lãnh đạo sếp Trung, trả lời ngắn gọn, xúc tích và hạn chế sinh ra dấu câu như . hoặc , trả lời lễ phép: \ncâu hỏi của sếp Trung:" + user_text)
+                bot_response = await self.chatbot.get_response("bạn là callbot của VTS, trả lời ngắn gọn, xúc tích và hạn chế sinh ra dấu câu như . hoặc ,: \ncâu hỏin là callbot của VTS dưới sự lãnh đạo sếp Trung, trả lời ngắn gọn, xúc tích và hạn chế sinh ra dấu câu như . hoặc , trả lời lễ phép: \ncâu hỏi của anh chị:" + user_text)
                 bot_response, _ = self.text_normalizer.check_end_conversation(bot_response)
                 normalized_response = self.text_normalizer.normalize_vietnamese_text(bot_response)
                 b = time.time()
                 print("llm answer: ", b - a)
                 print(f"Bot response to {uuid}: {normalized_response}")
+                
+                return normalized_response
 
-                # Chuyển text thành speech và lưu file
-                a = time.time()
-                response = self.chatbot.client.audio.speech.create(
-                    model="tts-1",
-                    voice=config.TTS_OPENAI_VOICE,
-                    input=normalized_response
+            # Chỉ chạy processing_task nếu có audio cần xử lý
+            if audio_data:
+                self.playback_event.set()
+                processing_task = asyncio.create_task(self.play_processing_message(uuid))
+                main_task = asyncio.create_task(main_processing())
+                
+                # Đợi một trong hai task hoàn thành trước
+                done, pending = await asyncio.wait(
+                    [processing_task, main_task],
+                    return_when=asyncio.FIRST_COMPLETED
                 )
                 
-                output_file = f"/home/hm1905/records/response_{uuid}.wav"
-                audio_segment = AudioSegment.from_mp3(io.BytesIO(response.content))
-                audio_segment.export(output_file, format='wav')
-                b = time.time()
-                print("text to speech and save: ", b - a)
-                
-                return output_file, audio_segment
-
-            # Chạy song song processing_task và main_processing
-            main_task = asyncio.create_task(main_processing())
-            
-            # Đợi một trong hai task hoàn thành trước
-            done, pending = await asyncio.wait(
-                [processing_task, main_task],
-                return_when=asyncio.FIRST_COMPLETED
-            )
-            
-            # Nếu processing_task hoàn thành trước, đợi main_task
-            if processing_task in done:
-                result = await main_task
+                # Nếu processing_task hoàn thành trước, đợi main_task
+                if processing_task in done:
+                    response_text = await main_task
+                else:
+                    # Nếu main_task hoàn thành trước, hủy processing_task
+                    processing_task.cancel()
+                    try:
+                        await processing_task
+                    except asyncio.CancelledError:
+                        pass
+                    response_text = main_task.result()
             else:
-                # Nếu main_task hoàn thành trước, hủy processing_task
-                processing_task.cancel()
-                try:
-                    await processing_task
-                except asyncio.CancelledError:
-                    pass
-                result = main_task.result()
+                # Nếu không có audio, chỉ chạy main_processing
+                response_text = await main_processing()
                 
-            if not result:
+            if not response_text:
                 return
                 
-            output_file, audio_segment = result
-                
+            # Chuyển text thành speech và lưu file
+            a = time.time()
+            response = self.chatbot.client.audio.speech.create(
+                model="tts-1",
+                voice=config.TTS_OPENAI_VOICE,
+                input=response_text
+            )
+            
+            output_file = f"/home/hm1905/records/response_{uuid}.wav"
+            audio_segment = AudioSegment.from_mp3(io.BytesIO(response.content))
+            audio_segment.export(output_file, format='wav')
+            b = time.time()
+            print("text to speech and save: ", b - a)
+            
             # Play response qua FreeSWITCH
             a = time.time()
             self.esl_con.execute("uuid_setvar", f"{uuid} playback_terminators none")
@@ -165,7 +174,7 @@ class FSCallBotSimple:
                 volume = max(abs(int.from_bytes(pcm_data[i:i+2], 'little', signed=True)) 
                            for i in range(0, len(pcm_data), 2))
                 
-                if volume > 300:  # Có tiếng nói
+                if volume > 400:  # Có tiếng nói
                     if not is_buffering:
                         is_buffering = True
                         buffer = []  # Reset buffer khi bắt đầu ghi âm mới
@@ -175,11 +184,11 @@ class FSCallBotSimple:
                 else:
                     if is_buffering:  # Chỉ tính silence khi đang trong quá trình buffer
                         silence_count += 1
-                        buffer.append(pcm_data)
+                        # buffer.append(pcm_data)
                 
                 # Xử lý khi đủ độ im lặng và có dữ liệu trong buffer
-                if is_buffering and silence_count > 120+60 and buffer:  # ~4s im lặng
-                    audio_data = b''.join(buffer)
+                if is_buffering and silence_count > 120:  # ~4s im lặng
+                    audio_data = b''.join(buffer) if len(buffer) > 1 else None
                     await self.process_audio(audio_data, uuid)
                     buffer = []
                     silence_count = 0
@@ -241,4 +250,4 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"Lỗi: {e}") 
     finally:
-        bot.is_running = False 
+        bot.is_running = False
