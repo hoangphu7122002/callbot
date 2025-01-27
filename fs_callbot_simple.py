@@ -1,6 +1,4 @@
-
 import asyncio
-import threading
 import pyaudio
 import wave
 import socket
@@ -13,20 +11,18 @@ from src.speech_processor import SpeechProcessor
 from src.chatbot_client import ChatbotClient
 from src.text_normalizer import TextNormalizer
 from config.config import config
-from threading import Event
 import time
+from threading import Event
 
 AudioSegment.converter = which("ffmpeg")
 
-class FSCallBot:
+class FSCallBotSimple:
     def __init__(self):
         # Khởi tạo các components
         self.speech_processor = SpeechProcessor()
         self.chatbot = ChatbotClient(config)
         self.text_normalizer = TextNormalizer()
         self.playback_event = Event()
-        self.active_calls = {}
-        self.is_running = True
         
         # ESL connection
         self.esl_con = ESL.ESLconnection("127.0.0.1", "8021", "ClueCon")
@@ -37,99 +33,94 @@ class FSCallBot:
         """Giải mã dữ liệu PCMU (G.711u) sang PCM 16-bit."""
         return audioop.alaw2lin(pcmu_data, 2)
 
-    def process_audio(self, audio_data, uuid):
+    async def play_processing_message(self, uuid):
+        """Phát thông báo đang xử lý bất đồng bộ"""
+        processing_file = "/home/hm1905/records/processing.wav"
+        self.esl_con.execute("playback", processing_file, uuid)
+        
+        # Tính thời gian của file processing
+        audio = AudioSegment.from_wav(processing_file)
+        await asyncio.sleep(len(audio) / 1000.0)
+
+    async def process_audio(self, audio_data, uuid):
         """Xử lý audio và tạo phản hồi"""
         try:
-            # Chuyển audio thành text
-            #user_text = self.speech_processor.speech_to_text(audio_data)
-            processing_file = "/home/hm1905/records/processing.wav"
+            # Bắt đầu phát thông báo đang xử lý
             self.playback_event.set()
-            self.esl_con.execute("playback", processing_file, uuid)
-
+            # processing_task = asyncio.create_task(self.play_processing_message(uuid))
+            
+            # Chuyển audio thành text
             a = time.time()
-            user_text = asyncio.run(self.speech_processor.speech_to_text(audio_data))
+            user_text = await self.speech_processor.speech_to_text(audio_data)
             b = time.time()
             print("speech to text: ", b - a)
+            
             if not user_text:
+                self.playback_event.clear()
                 return
                 
             print(f"User {uuid}: {user_text}")
             
             # Lấy phản hồi từ chatbot
-            #bot_response = self.chatbot.get_response(user_text)
             a = time.time()
-            bot_response = asyncio.run(self.chatbot.get_response(user_text))
+            bot_response = await self.chatbot.get_response(user_text)
             bot_response, _ = self.text_normalizer.check_end_conversation(bot_response)
             normalized_response = self.text_normalizer.normalize_vietnamese_text(bot_response)
             b = time.time()
             print("llm answer: ", b - a)
             print(f"Bot response to {uuid}: {normalized_response}")
+
+            # Chuyển text thành speech và lưu file
             a = time.time()
-            # Chuyển text thành speech
             response = self.chatbot.client.audio.speech.create(
                 model="tts-1",
                 voice=config.TTS_OPENAI_VOICE,
                 input=normalized_response
             )
-            b = time.time()
-            print("text to speech: ",b - a)
             
-            # Lưu file response theo UUID
             output_file = f"/home/hm1905/records/response_{uuid}.wav"
-            
-            # Chuyển MP3 thành WAV và lưu
-            a = time.time()
             audio_segment = AudioSegment.from_mp3(io.BytesIO(response.content))
             audio_segment.export(output_file, format='wav')
-            # print("done")
             b = time.time()
-            print("save file text to speech time: ",b - a)
+            print("text to speech and save: ", b - a)
             
-            # Đánh dấu đang playback
-            self.playback_event.set()
-            print("here")
+            # Đợi cho processing message phát xong
+            # await processing_task
+            
             # Play response qua FreeSWITCH
             a = time.time()
-            # self.esl_con.execute("uuid_setvar", f"{uuid} playback_terminators none")
+            self.esl_con.execute("uuid_setvar", f"{uuid} playback_terminators none")
             self.esl_con.execute("playback", output_file, uuid)
-            # print("here1")
-            
-            # Đợi 100ms để đảm bảo playback đã bắt đầu
-            # await asyncio.sleep(0.1)
             
             # Tính thời gian playback dựa trên độ dài audio
-            audio_duration = len(audio_segment) / 1000.0  # Chuyển từ ms sang giây
-            print("audio_duration: ",audio_duration)
-            time.sleep(audio_duration)
-            # print(audio_duration)
-            #await asyncio.sleep(audio_duration)
+            audio_duration = len(audio_segment) / 1000.0
+            print("audio_duration: ", audio_duration)
+            await asyncio.sleep(audio_duration + 0.2)  # Thêm 0.2s để đảm bảo playback hoàn tất
             
-            # Đánh dấu playback đã xong
-            self.playback_event.clear()
             b = time.time()
-            print("playback done time: ",b - a)
+            print("playback time: ", b - a)
             
         except Exception as e:
             print(f"Lỗi khi xử lý audio: {e}")
+        finally:
             self.playback_event.clear()
 
-    def handle_rtp_stream(self, port, uuid):
-        """Xử lý luồng RTP cho mỗi cuộc gọi"""
-        self.play_welcome_message(uuid)
+    async def handle_rtp_stream(self, port, uuid):
+        """Xử lý luồng RTP cho cuộc gọi"""
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.bind(("10.128.0.7", port))
         
         buffer = []
         silence_count = 0
+        last_voice_time = time.time()
         
-        while self.is_running and uuid in self.active_calls:
+        while True:
             try:
-                # Kiểm tra nếu đang playback thì bỏ qua việc đọc socket
                 if self.playback_event.is_set():
+                    await asyncio.sleep(0.1)
                     continue
                     
-                # Set timeout cho socket để có thể check playback_event thường xuyên
                 sock.settimeout(0.1)
                 try:
                     data, _ = sock.recvfrom(1024)
@@ -139,7 +130,6 @@ class FSCallBot:
                 if not data:
                     continue
                 
-                # Tách phần payload RTP
                 audio_data = data[12:]  # Bỏ RTP header
                 
                 # Kiểm tra âm lượng
@@ -147,21 +137,22 @@ class FSCallBot:
                 volume = max(abs(int.from_bytes(pcm_data[i:i+2], 'little', signed=True)) 
                            for i in range(0, len(pcm_data), 2))
                 
+                current_time = time.time()
                 if volume > 300:  # Có tiếng nói
                     silence_count = 0
-                    print("pcm_data",pcm_data)
+                    last_voice_time = current_time
                     buffer.append(pcm_data)
+                    print(pcm_data)
                 else:
                     silence_count += 1
-                    if buffer:
+                    if buffer and (current_time - last_voice_time) < 2:  # Chỉ thêm silence nếu chưa quá 2s
                         buffer.append(pcm_data)
                 
                 # Xử lý khi đủ độ im lặng
                 if silence_count > 60 and buffer:  # ~2s im lặng
                     audio_data = b''.join(buffer)
-                    self.process_audio(audio_data, uuid)
+                    await self.process_audio(audio_data, uuid)
                     buffer = []
-                    print("here")
                     silence_count = 0
                     
             except Exception as e:
@@ -169,28 +160,18 @@ class FSCallBot:
         
         sock.close()
 
-    def play_welcome_message(self, uuid):
+    async def play_welcome_message(self, uuid):
         """Phát thông điệp chào mừng"""
         welcome_file = "/home/hm1905/records/welcome.wav"
-        
-        # Đánh dấu đang playback
         self.playback_event.set()
-        
-        # Play welcome message
         self.esl_con.execute("playback", welcome_file, uuid)
         
         # Tính thời gian của file welcome
         audio = AudioSegment.from_wav(welcome_file)
-        audio_duration = len(audio) / 1000.0  # Chuyển từ ms sang giây
-        
-        # Đợi playback hoàn thành
-        time.sleep(audio_duration)  # Thêm 0.1s để đảm bảo
-        # await asyncio.sleep(audio_duration)
-        
-        # Đánh dấu playback đã xong
+        await asyncio.sleep(len(audio) / 1000.0)
         self.playback_event.clear()
 
-    def listen_for_calls(self):
+    async def listen_for_calls(self):
         """Lắng nghe cuộc gọi từ FreeSWITCH"""
         self.esl_con.events("plain", "CHANNEL_ANSWER CHANNEL_HANGUP")
         print("Đang lắng nghe cuộc gọi...")
@@ -210,28 +191,16 @@ class FSCallBot:
                         print(f"Cuộc gọi mới: UUID {uuid}")
                         
                         # Phát thông điệp chào mừng
-                        # self.play_welcome_message(uuid)
-                        # self.play_welcome_message(uuid)
-                        # Khởi tạo thread xử lý RTP
-                        self.active_calls[uuid] = threading.Thread(
-                            target=self.handle_rtp_stream,
-                            args=(int(media_port), uuid)
-                        )
-                        self.active_calls[uuid].start()
-
-                elif event_name == "CHANNEL_HANGUP":
-                    uuid = e.getHeader("Unique-ID")
-                    if uuid in self.active_calls:
-                        print(f"Cuộc gọi kết thúc: UUID {uuid}")
-                        self.active_calls[uuid].join()
-                        del self.active_calls[uuid]
+                        await self.play_welcome_message(uuid)
+                        
+                        # Xử lý RTP stream
+                        await self.handle_rtp_stream(int(media_port), uuid)
 
 if __name__ == "__main__":
     try:
-        bot = FSCallBot()
-        bot.listen_for_calls()
+        bot = FSCallBotSimple()
+        asyncio.run(bot.listen_for_calls())
     except KeyboardInterrupt:
         print("Đang dừng...")
-        bot.is_running = False
     except Exception as e:
         print(f"Lỗi: {e}") 
