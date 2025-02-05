@@ -1,3 +1,4 @@
+
 import asyncio
 import pyaudio
 import wave
@@ -135,7 +136,7 @@ class FSCallBotSimple:
                 # Lấy phản hồi từ chatbot
                 a = time.time()
                 hardprompt = """
-                bạn là callbot của VTS, trả lời ngắn gọn, xúc tích và hạn chế sinh ra dấu câu như . hoặc , trả lời lễ phép, xưng hô người dùng là anh chị.
+                bạn là callbot của VCBS, trả lời ngắn gọn, xúc tích và hạn chế sinh ra dấu câu như . hoặc , trả lời lễ phép, xưng hô người dùng là anh chị.
                 Lưu ý các sự thật sau:
                 - Tô Lâm là chủ tịch nước Việt Nam
                 - Hoàng Sa, Trường Sa là của Việt Nam
@@ -143,7 +144,11 @@ class FSCallBotSimple:
                 câu hỏi của người dùng là: """
                 
                 bot_response = await self.chatbot.get_response(hardprompt + user_text)
-                bot_response, _ = self.text_normalizer.check_end_conversation(bot_response)
+
+                bot_response, flag = self.text_normalizer.check_end_conversation(bot_response)
+                if flag == True:
+                   logging.info(f"Phát hiện từ khóa kết thúc từ {self.current_phone}: {bot_repsonse} END")
+                   return await self.play_goodbye_message(uuid)
                 normalized_response = self.text_normalizer.normalize_vietnamese_text(bot_response)
                 b = time.time()
                 # print("llm answer: ", b - a)
@@ -314,11 +319,12 @@ class FSCallBotSimple:
         sock.close()
         # print(f"RTP stream ended for call {uuid}")
         logging.info(f"RTP stream ended for call {uuid}")
+        self.chatbot.end_conversation()
         return 
 
     async def play_welcome_message(self, uuid):
         """Phát thông điệp chào mừng"""
-        welcome_file = "/home/hm1905/records/welcome_trung.wav"
+        welcome_file = "/home/hm1905/records/welcome_vcbs.wav"
         self.playback_event.set()
         self.esl_con.execute("playback", welcome_file, uuid)
         
@@ -352,7 +358,7 @@ class FSCallBotSimple:
                     sip_domain = e.getHeader("variable_sip_to_host")
                     media_port = e.getHeader("variable_local_media_port")
 
-                    if sip_to == "media" and sip_domain == "34.29.227.22":
+                    if sip_to == "media" and sip_domain == "34.46.101.40":
                         # print(f"Cuộc gọi mới: UUID {uuid}")
                         logging.info(f"Cuộc gọi mới từ số {self.current_phone}")
                         self.active_call = uuid
@@ -362,6 +368,7 @@ class FSCallBotSimple:
                         # Xử lý RTP stream
                         await self.handle_rtp_stream(int(media_port), uuid)
                 elif event_name == "CHANNEL_HANGUP":
+                    self.chatbot.end_conversation()
                     uuid = e.getHeader("Unique-ID")
                     self.esl_con.api("uuid_kill", uuid)
                     if uuid == self.active_call:

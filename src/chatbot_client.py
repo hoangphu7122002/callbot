@@ -1,3 +1,4 @@
+
 # import openai
 # from config.config import config
 # from .dify_bot_client import DifyBotClient
@@ -87,7 +88,7 @@
 import os
 from openai import OpenAI
 from config.config import config
-from .dify_bot_client import DifyBotClient
+from .dify_bot_client1 import DifyBotClient
 
 class ChatbotClient:
     """
@@ -106,6 +107,7 @@ class ChatbotClient:
                 api_url=config.DIFY_API_URL,
                 api_key=config.DIFY_API_KEY
             )
+            self.client = OpenAI(api_key=config.OPENAI_API_KEY)
         else:
             self.conversation_history = []
             self.client = OpenAI(api_key=config.OPENAI_API_KEY)  # Sử dụng OpenAI client mới
@@ -129,7 +131,8 @@ class ChatbotClient:
             if not hasattr(self, 'conversation_started'):
                 self.bot.reset_conversation()
                 self.conversation_started = True
-            return await self.bot.get_response(message)
+            print("================debug==============")
+            return self.bot.get_response(message)
         else:
             self.conversation_history.append({"role": "user", "content": message})
             
@@ -167,7 +170,13 @@ class ChatbotClient:
             return True
         
         # Kiểm tra marker kết thúc
-        if "##END##" in text:
+        if "##END##" in text or "##end##" in text:
             return True
         
         return False
+
+    def end_conversation(self):
+        try:
+            self.bot.end_conversation()
+        except:
+            print("not implementation for openai")
