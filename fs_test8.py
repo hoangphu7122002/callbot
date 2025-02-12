@@ -1,4 +1,3 @@
-
 import asyncio
 import pyaudio
 import wave
@@ -240,7 +239,7 @@ class FSCallBotSimple:
         """Xử lý luồng RTP cho cuộc gọi"""
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        sock.bind(("10.128.0.7", port))
+        sock.bind(("10.206.0.2", port))
         
         buffer = []
         silence_count = 0
@@ -358,7 +357,7 @@ class FSCallBotSimple:
                     sip_domain = e.getHeader("variable_sip_to_host")
                     media_port = e.getHeader("variable_local_media_port")
 
-                    if sip_to == "media" and sip_domain == "34.46.101.40":
+                    if sip_to == "media" and sip_domain == "34.174.214.130":
                         # print(f"Cuộc gọi mới: UUID {uuid}")
                         logging.info(f"Cuộc gọi mới từ số {self.current_phone}")
                         self.active_call = uuid
@@ -387,5 +386,5 @@ if __name__ == "__main__":
         bot.is_running = False
     except Exception as e:
         print(f"Lỗi: {e}") 
-    finally:
-        bot.is_running = False
+    # finally:
+    #    bot.is_running = False

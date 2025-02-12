@@ -36,13 +36,13 @@ class Config:
     GPT_MODEL = 'gpt-4o-mini'  # hoặc model bạn đang sử dụng
     OPENAI_API_KEY = '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'
     # Dify config
-    DIFY_API_URL = "http://34.46.101.40:8088/v1/chat-messages"
-    DIFY_API_KEY = "app-T6Vb0gMXUYVGU1puhd8f6FyS"
+    DIFY_API_URL = "http://34.174.214.130:8088/v1/chat-messages"
+    DIFY_API_KEY = "app-jEAZXlZZVZpdpximRcwqKafz"
 
     # Add bot type configuration
-    BOT_TYPE = "dify"  # or "chatgpt" for switching between bots
+    # BOT_TYPE = "dify"  # or "chatgpt" for switching between bots
     
-    # BOT_TYPE = "chatgpt"  # or "chatgpt" for switching between bots
+    BOT_TYPE = "chatgpt"  # or "chatgpt" for switching between bots
 
     # RTP Settings
     RTP_LOCAL_IP = "127.0.0.1"     # Localhost

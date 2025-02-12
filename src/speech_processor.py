@@ -48,6 +48,9 @@ class SpeechProcessor:
             
             # Tạo temporary file
             with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as temp_wav:
+                print("===============")
+                print(temp_wav.name)
+                print("===============")
                 with wave.open(temp_wav.name, 'wb') as wav_file:
                     wav_file.setnchannels(config.AUDIO_CHANNELS)
                     wav_file.setsampwidth(2)

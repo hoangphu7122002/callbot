@@ -112,6 +112,55 @@ class ChatbotClient:
             self.conversation_history = []
             self.client = OpenAI(api_key=config.OPENAI_API_KEY)  # Sử dụng OpenAI client mới
     
+    def sync_get_response(self, message):
+        """
+        Get response from GPT model for user input.
+        
+        Args:
+            message (str): User's message text
+        """ 
+        """
+        Get response from GPT model for user input.
+        
+        Args:
+            message (str): User's message text
+            
+        Returns:
+            str: Bot's response
+            
+        Note:
+            Maintains conversation history for context
+            Handles API errors gracefully
+        """
+        if self.config.BOT_TYPE == "dify":
+            # Reset conversation nếu là tin nhắn đầu tiên
+            if not hasattr(self, 'conversation_started'):
+                self.bot.reset_conversation()
+                self.conversation_started = True
+            print("================debug==============")
+            return self.bot.get_response(message)
+        else:
+            self.conversation_history.append({"role": "user", "content": message})
+            
+            try:
+                # Sử dụng API mới của OpenAI
+                response = self.client.chat.completions.create(
+                    model=self.config.GPT_MODEL,
+                    messages=self.conversation_history
+                )
+                
+                bot_response = response.choices[0].message.content
+                self.conversation_history.append({
+                    "role": "assistant", 
+                    "content": bot_response
+                })
+                
+                return bot_response
+                
+            except Exception as e:
+                print(f"Error calling OpenAI API: {e}")
+                return "Xin lỗi, tôi đang gặp sự cố kỹ thuật."
+
     async def get_response(self, message):
         """
         Get response from GPT model for user input.
