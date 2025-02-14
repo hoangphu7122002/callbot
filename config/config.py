@@ -5,8 +5,8 @@ load_dotenv()
 
 class Config:
     # API Endpoints
-    TTS_WEBSOCKET_URL = "ws://localhost:38001/ws/generate_speech/"
-    STT_API_URL = "http://localhost:38000/asr/upload/?en=false"
+    TTS_WEBSOCKET_URL = "ws://t2s.vts-dasc.net/ws/generate_speech/"
+    STT_API_URL = "https://asr.vts-dasc.net/asr/upload/?en=false"
 
     # Audio Settings
     AUDIO_CHUNK = 1024
@@ -19,13 +19,15 @@ class Config:
     MAX_CONVERSATION_TIME = 300 # Thời gian tối đa cho mỗi cuộc trò chuyện (khoảng 5 phút)
 
     # Text-to-Speech Settings
-    TTS_PROVIDER = "openai" #local
-    # TTS_VOICE = "nu-calm.wav"
+    # TTS_PROVIDER = "openai" #local
+    TTS_PROVIDER = "local"
+    TTS_VOICE = "nam-calm.wav"
     TTS_OPENAI_VOICE = "alloy"
     TTS_LANGUAGE = "vi"
 
     # Speech-to-Text Settings
-    STT_PROVIDER = "openai" #local
+    # STT_PROVIDER = "openai" #local
+    STT_PROVIDER = "local"
     STT_LANGUAGE = "vi"
     STT_MODEL = "whisper-1"
 
@@ -40,9 +42,9 @@ class Config:
     DIFY_API_KEY = "app-jEAZXlZZVZpdpximRcwqKafz"
 
     # Add bot type configuration
-    # BOT_TYPE = "dify"  # or "chatgpt" for switching between bots
+    BOT_TYPE = "dify"  # or "chatgpt" for switching between bots
     
-    BOT_TYPE = "chatgpt"  # or "chatgpt" for switching between bots
+    # BOT_TYPE = "chatgpt"  # or "chatgpt" for switching between bots
 
     # RTP Settings
     RTP_LOCAL_IP = "127.0.0.1"     # Localhost

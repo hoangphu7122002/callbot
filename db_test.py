@@ -20,6 +20,9 @@ from multiprocessing import Process, Queue, Manager
 
 from minio import Minio
 from minio.error import S3Error
+import psycopg2
+from psycopg2 import sql
+
 
 # MinIO server details. Seriously need to redo but lazy rn
 minio_client = Minio(
@@ -51,6 +54,27 @@ def minio_upload(uuid, bucket_name, file_path):
     except S3Error as e:
         print(f"Error uploading file: {e}")
 
+
+#Postgres insert. Need Serious rework
+def data_insert(uuid, number, step, output, processing_time):
+    conn = psycopg2.connect(
+      dbname="postgres", 
+      user="postgres", 
+      password="password", 
+      host="34.174.214.130",
+      port="35432" 
+    )
+
+    cursor = conn.cursor()
+    insert_query = """
+      INSERT INTO callbot.activity_history (uuid, number, step, output, processing_time)
+      VALUES (%s, %s, %s, %s, %s)
+    """
+    payload = (uuid, number, step, output, processing_time)
+    cursor.execute(insert_query, payload)
+    conn.commit()
+    cursor.close()
+    conn.close()
 
 # Setup logging
 logging.basicConfig(
@@ -104,6 +128,7 @@ class CallHandler:
                     current_uuid = e.getHeader("Unique-ID")
                     if current_uuid == uuid:
                         logging.info(f"Call hangup detected: {uuid}")
+                        data_insert(uuid, self.current_phone, "HANGUP", "None", "None")
                         return "HANGUP"
             return None
         except Exception as e:
@@ -122,6 +147,7 @@ class CallHandler:
             audio = AudioSegment.from_wav(goodbye_file)
             playback_duration = len(audio) / 1000.0
             logging.info(f"Playing goodbye message for {self.current_phone}, duration: {playback_duration}s")
+            data_insert(uuid, self.current_phone, "Goodbye", "Goodbye", playback_duration)
             await asyncio.sleep(playback_duration)
             
             # End the call
@@ -156,6 +182,8 @@ class CallHandler:
                     return None
                     
                 logging.info(f"User {self.current_phone}: {user_text}")
+                processing_time = b-a
+                data_insert(uuid, self.current_phone, "ASR", user_text, processing_time)
                 
                 # Check for end conversation keywords
                 if self.chatbot.should_end_conversation(user_text.lower()) or user_text.lower() == "không" or user_text.lower() == "xong":
@@ -182,6 +210,8 @@ class CallHandler:
                 b = time.time()
                 logging.info(f"LLM answer time: {b - a}")
                 logging.info(f"Bot response to {self.current_phone}: {normalized_response}")
+                processing_time_tts = b-a
+                data_insert(uuid, self.current_phone, "TTS", normalized_response, processing_time_tts)
                 
                 # Check hangup after chatbot response
                 if await self.check_hangup(uuid) == "HANGUP":
@@ -344,7 +374,7 @@ class CallHandler:
 
     async def play_welcome_message(self, uuid):
         """Play welcome message"""
-        welcome_file = "/home/hm1905/records/welcome_chao.wav"
+        welcome_file = "/home/hm1905/records/welcome_vcbs.wav"
         self.playback_event.set()
         self.esl_con.execute("playback", welcome_file, uuid)
         

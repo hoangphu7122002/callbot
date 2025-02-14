@@ -1,3 +1,6 @@
+# Import thêm cho Silero VAD
+import torch
+import numpy as np
 import asyncio
 import pyaudio
 import wave
@@ -15,11 +18,6 @@ import time
 from threading import Event
 import logging
 from multiprocessing import Process, Queue, Manager
-# import websockets
-# import re
-# import json
-# import base64
-# from io import BytesIO
 
 # Setup logging
 logging.basicConfig(
@@ -49,10 +47,23 @@ class CallHandler:
         self.esl_con = ESL.ESLconnection("127.0.0.1", "8021", "ClueCon")
         if not self.esl_con.connected():
             raise Exception("Failed to connect to FreeSWITCH")
+            
+        # Khởi tạo Silero VAD
+        self.vad_model, _ = torch.hub.load(repo_or_dir='snakers4/silero-vad',
+                                         model='silero_vad',
+                                         force_reload=True)
+        self.vad_model.eval()
 
-    def decode_pcmu_to_pcm16(self, pcmu_data):
+    def decode_pcmu_to_pcm16(self, pcm_data):
         """Decode PCMU (G.711u) data to PCM 16-bit."""
-        return audioop.alaw2lin(pcmu_data, 2)
+        return audioop.alaw2lin(pcm_data, 2)
+
+    def pcm_to_float(self, pcm_data):
+        """Convert PCM 16-bit to float32 for Silero VAD"""
+        # Chuyển bytes thành numpy array int16
+        audio_np = np.frombuffer(pcm_data, dtype=np.int16)
+        # Normalize to float32 [-1, 1]
+        return audio_np.astype(np.float32) / 32768.0
 
     async def play_processing_message(self, uuid):
         """Play processing message asynchronously"""
@@ -108,7 +119,7 @@ class CallHandler:
             # Create main processing task
             async def main_processing():
                 if audio_data is None:  # Case of prolonged silence
-                    confirmation_text = "Anh chị có cần gì nữa không ạ?"
+                    confirmation_text = "Do you need anything else?"
                     logging.info(f"Bot to {self.current_phone} (silence prompt): {confirmation_text}")
                     return confirmation_text
                     
@@ -131,7 +142,6 @@ class CallHandler:
                 if self.chatbot.should_end_conversation(user_text.lower()) or user_text.lower() == "không" or user_text.lower() == "xong":
                     logging.info(f"End conversation keyword detected from {self.current_phone}: {user_text}")
                     return await self.play_goodbye_message(uuid)
-
                 # Get response from chatbot
                 a = time.time()
                 hardprompt = """
@@ -197,9 +207,14 @@ class CallHandler:
                 
             # Convert text to speech and save file
             a = time.time()
-            audio_segment = await self.speech_processor.text_to_speech(response_text, uuid)
+            response = self.chatbot.client.audio.speech.create(
+                model="tts-1",
+                voice=config.TTS_OPENAI_VOICE,
+                input=response_text
+            )
             
             output_file = f"/home/hm1905/records/response_{uuid}.wav"
+            audio_segment = AudioSegment.from_mp3(io.BytesIO(response.content))
             audio_segment.export(output_file, format='wav')
             b = time.time()
             
@@ -209,7 +224,6 @@ class CallHandler:
             
             # Add logging for playback response
             a = time.time()
-            # self.esl_con.execute("uuid_setvar", f"{uuid} playback_terminators none")
             self.esl_con.execute("playback", output_file, uuid)
             
             # Calculate playback duration based on audio length
@@ -224,6 +238,19 @@ class CallHandler:
             logging.error(f"Error processing audio: {e}")
         finally:
             self.playback_event.clear()
+
+    async def play_welcome_message(self, uuid):
+        """Play welcome message"""
+        welcome_file = "/home/hm1905/records/welcome_chao.wav"
+        self.playback_event.set()
+        self.esl_con.execute("playback", welcome_file, uuid)
+        
+        # Calculate welcome file duration
+        audio = AudioSegment.from_wav(welcome_file)
+        playback_duration = len(audio) / 1000.0
+        logging.info(f"Playing welcome message for {self.current_phone}, duration: {playback_duration}s")
+        await asyncio.sleep(playback_duration)
+        self.playback_event.clear()
 
     async def handle_rtp_stream(self, port, uuid):
         """Handle RTP stream for the call"""
@@ -254,19 +281,23 @@ class CallHandler:
                 
                 if data:
                     audio_data = data[12:]  # Remove RTP header
-                
-                    # Check volume
                     pcm_data = self.decode_pcmu_to_pcm16(audio_data)
-                    volume = max(abs(int.from_bytes(pcm_data[i:i+2], 'little', signed=True)) 
-                              for i in range(0, len(pcm_data), 2))
-                
-                    if volume > 700:  # Voice detected
+                    
+                    # Chuyển đổi sang float32 cho Silero VAD
+                    float_data = self.pcm_to_float(pcm_data)
+                    
+                    # Reshape data for model input (8000Hz sample rate)
+                    float_data = torch.from_numpy(float_data).unsqueeze(0)
+                    
+                    # Kiểm tra VAD với Silero
+                    speech_prob = self.vad_model(float_data, 8000).item()
+                    
+                    if speech_prob > 0.5:  # Voice detected
                         if not is_buffering:
                             is_buffering = True
                             buffer = []  # Reset buffer when starting new recording
                         silence_count = 0
                         buffer.append(pcm_data)
-                        print(f"{port}: {pcm_data}")
                     else:
                         if is_buffering:  # Only count silence when buffering
                             silence_count += 1
@@ -279,7 +310,7 @@ class CallHandler:
                     break
                 
                 # Process when enough silence and data in buffer
-                if is_buffering and silence_count > 60:  # ~4s silence
+                if is_buffering and silence_count > 120:  # ~4s silence
                     audio_data = b''.join(buffer) if len(buffer) > 3 else None
                     
                     result = await self.process_audio(audio_data, uuid)
@@ -307,19 +338,6 @@ class CallHandler:
         self.chatbot.end_conversation()
         return
 
-    async def play_welcome_message(self, uuid):
-        """Play welcome message"""
-        welcome_file = "/home/hm1905/records/welcome_vcbs.wav"
-        self.playback_event.set()
-        self.esl_con.execute("playback", welcome_file, uuid)
-        
-        # Calculate welcome file duration
-        audio = AudioSegment.from_wav(welcome_file)
-        playback_duration = len(audio) / 1000.0
-        logging.info(f"Playing welcome message for {self.current_phone}, duration: {playback_duration}s")
-        await asyncio.sleep(playback_duration)
-        self.playback_event.clear()
-
     async def handle_call(self):
         """Handle a specific call"""
         try:
@@ -336,7 +354,6 @@ def handle_call_process(uuid, media_port, phone_number):
     """The function is run in a separate process for each call."""
     handler = CallHandler(uuid, media_port, phone_number)
     asyncio.run(handler.handle_call())
-    # handler.handle_call()
 
 class FSCallBotMultiProcess:
     def __init__(self):
@@ -383,9 +400,6 @@ class FSCallBotMultiProcess:
                     sip_from = e.getHeader("variable_sip_from_user")
                     sip_domain = e.getHeader("variable_sip_to_host")
                     if sip_to == "media" and sip_domain == "34.174.214.130":
-                        # print("==============")
-                        # print("here1")
-                        # print("==============")
                         uuid = e.getHeader("Unique-ID")
                         print(f"{uuid}")
                         if uuid in self.active_calls:

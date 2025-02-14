@@ -1,6 +1,12 @@
 import requests
 import wave
 import io
+import json
+import base64
+from io import BytesIO
+import websockets
+from pydub import AudioSegment
+import logging
 from openai import OpenAI
 from config.config import config
 
@@ -8,7 +14,9 @@ class SpeechProcessor:
     def __init__(self):
         self.language = config.STT_LANGUAGE
         self.stt_api_url = config.STT_API_URL
-        self.client = OpenAI(api_key=config.OPENAI_API_KEY)
+        self.client = None
+        if hasattr(config, 'OPENAI_API_KEY'):
+            self.client = OpenAI(api_key=config.OPENAI_API_KEY)
 
     async def speech_to_text(self, audio_data: bytes) -> str:
         try:
@@ -71,6 +79,55 @@ class SpeechProcessor:
             print(f"Lỗi khi sử dụng OpenAI STT: {e}")
             return ''
 
-    async def text_to_speech(self, text: str) -> bytes:
-        # Phương thức này không còn cần thiết vì chúng ta đang sử dụng WebSocket
-        pass
+    async def text_to_speech(self, text, uuid):
+        """Convert text to speech using configured provider"""
+        try:
+            if config.TTS_PROVIDER == "openai":
+                return await self._openai_tts(text)
+            elif config.TTS_PROVIDER == "local":
+                return await self._local_tts(text)
+        except Exception as e:
+            logging.error(f"Error in text_to_speech: {e}")
+            raise
+
+    async def _openai_tts(self, text):
+        """Convert text to speech using OpenAI"""
+        if not self.client:
+            raise Exception("OpenAI client not initialized")
+            
+        response = self.client.audio.speech.create(
+            model="tts-1",
+            voice=config.TTS_OPENAI_VOICE,
+            input=text
+        )
+        return AudioSegment.from_mp3(io.BytesIO(response.content))
+
+    async def _local_tts(self, text):
+        """Convert text to speech using local websocket service"""
+        sentences = [text]  # Single sentence approach as requested
+        
+        async with websockets.connect(config.TTS_WEBSOCKET_URL) as websocket:
+            await websocket.send(json.dumps({
+                "text": text,
+                "language": config.TTS_LANGUAGE,
+                "sample_file": config.TTS_VOICE
+            }))
+            
+            combined_audio = AudioSegment.empty()
+            while True:
+                response = await websocket.recv()
+                data = json.loads(response)
+                
+                if "error" in data:
+                    logging.error(f"TTS Error: {data['error']}")
+                    continue
+                    
+                if "audio_base64" in data:
+                    audio_bytes = base64.b64decode(data["audio_base64"])
+                    segment = AudioSegment.from_wav(BytesIO(audio_bytes))
+                    combined_audio += segment
+                    
+                if data["index"] == data["total"] - 1:
+                    break
+                    
+        return combined_audio

@@ -7,3 +7,5 @@ pydub
 pyaudio
 python-dotenv
 FreeSWITCH-ESL-Python
+torch
+torchaudio
