@@ -27,7 +27,7 @@ class Config:
 
     # Speech-to-Text Settings
     # STT_PROVIDER = "openai" #local
-    STT_PROVIDER = "local"
+    STT_PROVIDER = "openai"
     STT_LANGUAGE = "vi"
     STT_MODEL = "whisper-1"
 
@@ -42,7 +42,8 @@ class Config:
     DIFY_API_KEY = "app-jEAZXlZZVZpdpximRcwqKafz"
 
     # Add bot type configuration
-    BOT_TYPE = "dify"  # or "chatgpt" for switching between bots
+    BOT_TYPE = "openai"  # "openai", "dify" or "local"
+    LOCAL_LLM_URL = "https://llm.vts-dasc.net/test"
     
     # BOT_TYPE = "chatgpt"  # or "chatgpt" for switching between bots
 
@@ -56,7 +57,7 @@ class Config:
     BOT_PORT = 5006               # Port bot gửi/nhận
     
     # Audio settings
-    # AUDIO_CHUNK = 1024            # Chunk size phải giống nhau
+    # AUDIO_CHUNK = 1024             # Chunk size phải giống nhau
     # AUDIO_RATE = 24000            # Sample rate phải giống nhau
     # AUDIO_CHANNELS = 1
      # SILENCE_THRESHOLD = 300
