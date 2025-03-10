@@ -79,7 +79,7 @@ class SpeechProcessor:
             print(f"Lỗi khi sử dụng OpenAI STT: {e}")
             return ''
 
-    async def text_to_speech(self, text, uuid):
+    async def text_to_speech(self, text, uuid=None):
         """Convert text to speech using configured provider"""
         try:
             if config.TTS_PROVIDER == "openai":

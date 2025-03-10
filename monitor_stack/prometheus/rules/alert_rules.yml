@@ -1,0 +1,49 @@
+groups:
+  - name: node_rules
+    rules:
+      - alert: HighCPULoad
+        expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU load (instance {{ $labels.instance }})"
+          description: "CPU load is > 80%\n  VALUE = {{ $value }}\n  LABELS: {{ $labels }}"
+
+      - alert: HighMemoryLoad
+        expr: (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory load (instance {{ $labels.instance }})"
+          description: "Memory load is > 85%\n  VALUE = {{ $value }}\n  LABELS: {{ $labels }}"
+
+      - alert: HighDiskUsage
+        expr: (node_filesystem_size_bytes{mountpoint="/"} - node_filesystem_free_bytes{mountpoint="/"}) / node_filesystem_size_bytes{mountpoint="/"} * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High disk usage (instance {{ $labels.instance }})"
+          description: "Disk usage is > 85%\n  VALUE = {{ $value }}\n  LABELS: {{ $labels }}"
+  
+  - name: docker_rules
+    rules:
+      - alert: ContainerCpuUsage
+        expr: (sum by(name) (rate(container_cpu_usage_seconds_total{name!=""}[5m])) / count by(name) (container_spec_cpu_shares{name!=""}) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Container CPU usage (instance {{ $labels.name }})"
+          description: "Container CPU usage is above 80%\n  VALUE = {{ $value }}\n  LABELS: {{ $labels }}"
+
+      - alert: ContainerMemoryUsage
+        expr: (sum by(name) (container_memory_usage_bytes{name!=""}) / sum by(name) (container_spec_memory_limit_bytes{name!=""}) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Container memory usage (instance {{ $labels.name }})"
+          description: "Container memory usage is above 80%\n  VALUE = {{ $value }}\n  LABELS: {{ $labels }}" 

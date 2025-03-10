@@ -20,7 +20,7 @@ class Config:
 
     # Text-to-Speech Settings
     # TTS_PROVIDER = "openai" #local
-    TTS_PROVIDER = "local"
+    TTS_PROVIDER = "openai"
     TTS_VOICE = "nam-calm.wav"
     TTS_OPENAI_VOICE = "alloy"
     TTS_LANGUAGE = "vi"
@@ -55,12 +55,6 @@ class Config:
     # Port settings
     USER_PORT = 5060               # Port user gửi/nhận
     BOT_PORT = 5006               # Port bot gửi/nhận
-    
-    # Audio settings
-    # AUDIO_CHUNK = 1024             # Chunk size phải giống nhau
-    # AUDIO_RATE = 24000            # Sample rate phải giống nhau
-    # AUDIO_CHANNELS = 1
-     # SILENCE_THRESHOLD = 300
 
 # Create a singleton instance
 config = Config()

@@ -88,11 +88,11 @@ class TextNormalizer:
     @staticmethod
     def normalize_punctuation(text):
         """Add spaces before punctuation and normalize multiple punctuation"""
-        text = re.sub(r'([.,!?])', r' \1', text)  # Add space before punctuation
-        text = re.sub(r'\s+([.,!?])', r' \1', text)  # Remove extra spaces
         text = re.sub(r'\.+', '.', text)  # Replace multiple dots
         text = re.sub(r'!+', '!', text)  # Replace multiple exclamation marks
         text = re.sub(r'\?+', '?', text)  # Replace multiple question marks
+        text = re.sub(r'([.,!?])', r' \1', text)  # Add space before punctuation
+        text = re.sub(r'\s+([.,!?])', r' \1', text)  # Remove extra spaces
         return text.strip()
 
     @staticmethod
@@ -114,16 +114,16 @@ class TextNormalizer:
         """Normalize Vietnamese text for TTS"""
         # Loại bỏ emoji và ký tự đặc biệt
         text = TextNormalizer.remove_emojis(text)
-        
+        print(text)
         # Chuẩn hóa cơ bản với underthesea
-        text = TTSnorm(text)
-        
+        # text = TTSnorm(text)
+        # print(text)
         # Xử lý số và ngày tháng
         text = TextNormalizer.normalize_numbers(text)
-        
+        print(text)
         # Xử lý dấu câu
         text = TextNormalizer.normalize_punctuation(text)
-        
+        print(text)
         # Các thay thế đặc biệt
         replacements = {
             '"': '',
@@ -142,8 +142,10 @@ class TextNormalizer:
         for old, new in replacements.items():
             text = text.replace(old, new)
             
+        print(text)            
         # Loại bỏ khoảng trắng thừa
         text = ' '.join(text.split())
+        print(text)
         return text.strip()
 
     @staticmethod
@@ -153,3 +155,7 @@ class TextNormalizer:
             # Remove the marker and return cleaned text and True flag
             return text.replace("##END##", "").strip(), True
         return text, False 
+    
+if __name__ == "__main__":
+    text = "Giá: 100.000đ!!!"
+    print(TextNormalizer.normalize_vietnamese_text(text))

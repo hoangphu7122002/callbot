@@ -11,6 +11,7 @@ import time
 import logging
 import uuid
 import random
+import re
 
 import nest_asyncio
 nest_asyncio.apply()
@@ -37,10 +38,10 @@ class CallSimulator:
         # List các file audio test
         self.test_audio_files = [
             "/home/hm1905/records/welcome1.wav",
-            # "/home/hm1905/records/welcome2.wav",
-            # "/home/hm1905/records/welcome3.wav",
-            # "/home/hm1905/records/welcome4.wav",
-            # "/home/hm1905/records/welcome5.wav"
+            "/home/hm1905/records/welcome2.wav",
+            "/home/hm1905/records/welcome3.wav",
+            "/home/hm1905/records/welcome4.wav",
+            "/home/hm1905/records/welcome5.wav"
         ]
 
     async def simulate_playback(self, audio_segment):
@@ -105,6 +106,8 @@ class CallSimulator:
                 - Hoàng Sa, Trường Sa belong to Vietnam
                 This is round {round_num} of the conversation.
                 Also pay attention to conversation history context.
+
+                Please don't generate some sign like: '.', ',', '*' and number of word approximates 100 words. 
                 User's question is: """
                 
                 bot_response = await self.chatbot.get_response(hardprompt + user_text)
@@ -171,14 +174,11 @@ class CallSimulator:
 
             # TTS
             tts_start = time.time()
-            response = self.chatbot.client.audio.speech.create(
-                model="tts-1",
-                voice=config.TTS_OPENAI_VOICE,
-                input=response_text
-            )
-            
-            # Convert to audio segment and simulate playback
-            audio_segment = AudioSegment.from_mp3(io.BytesIO(response.content))
+
+            response_text = response_text.replace("*","").replace("**","")
+            response_text = re.sub(r'\s+', ' ', response_text)
+            audio_segment = await self.speech_processor.text_to_speech(response_text)
+
             metrics['tts_time'] = time.time() - tts_start
             
             # Simulate response playback
