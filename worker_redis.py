@@ -18,6 +18,8 @@ import time
 from threading import Event
 import logging
 from datetime import datetime
+import redis
+
 
 # Thiết lập logging
 logging.basicConfig(
@@ -43,11 +45,9 @@ playback_event = Event()
 active_call = None
 is_running = True
 current_phone = None
-start_time = None
 
 import psycopg2
 from psycopg2 import sql
-
 
 #Postgres insert. Need Serious rework
 def data_insert(uuid, number, step, output, processing_time):
@@ -61,7 +61,7 @@ def data_insert(uuid, number, step, output, processing_time):
     now = datetime.now()    
     cursor = conn.cursor()
     insert_query = """
-      INSERT INTO callbot.activity_history (uuid, number, step, output, processing_time, time)
+      INSERT INTO callbot.activity_history (uuid, number, step, output, processing_time, record_time)
       VALUES (%s, %s, %s, %s, %s, %s)
     """
     payload = (uuid, number, step, output, processing_time, now)
@@ -247,7 +247,7 @@ async def process_audio(audio_data, uuid, current_phone):
         b = time.time()
         print("text to speech and save: ", b - a)
         processing_time_tts = b-a
-        data_insert(uuid, current_phone, "TTS", "", processing_time_tts)
+        data_insert(uuid, current_phone, "TTS GENERATE", "", processing_time_tts)
         
         
         # Kiểm tra hangup trước khi playback
@@ -270,7 +270,7 @@ async def process_audio(audio_data, uuid, current_phone):
         # print("playback time: ", b - a)
         logging.info(f"Actual playback time for {current_phone}: {b - a}s")
         processing_time_tts_playback = b-a
-        data_insert(uuid, current_phone, "PLAYBACK", "", processing_time_tts_playback)
+        data_insert(uuid, current_phone, "TTS PLAYBACK", "", processing_time_tts_playback)
 
     except Exception as e:
         print(f"Lỗi khi xử lý audio: {e}")
@@ -287,9 +287,6 @@ async def handle_rtp_stream(port, uuid, current_phone, ch, method):
     silence_count = 0
     is_buffering = False
     last_response_was_confirmation = False
-    
-    global start_time
-    start_time = time.time()
     
     while True:
         try:
@@ -359,17 +356,11 @@ async def handle_rtp_stream(port, uuid, current_phone, ch, method):
         except Exception as e:
             # print(f"Lỗi trong handle_rtp_stream: {e}")
             logging.error(f"Lỗi trong handle_rtp_stream: {e}")
-            break
     
     sock.close()
     # print(f"RTP stream ended for call {uuid}")
     logging.info(f"RTP stream ended for call {uuid}")
     chatbot.end_conversation()
-    
-    end_time = time.time()
-    duration = end_time - start_time
-    data_insert(uuid, current_phone, "CALL DURATION", "", duration)
-    
     return 
 
 async def play_welcome_message(uuid, current_phone):
@@ -412,6 +403,8 @@ def listen_for_calls(uuid, media_port, sip_from, ch, method):
 
 
 def process_call(ch, method, properties, body):
+    print(f"Raw body: {body}")
+
     call_data = json.loads(body)
     uuid = call_data["uuid"]
     sip_from = call_data["sip_from"]
@@ -428,7 +421,7 @@ def process_call(ch, method, properties, body):
 def start_worker():
     connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
     channel = connection.channel()
-    channel.queue_declare(queue='call_queue')
+    channel.queue_declare(queue='call_queue', durable=True)
 
     channel.basic_qos(prefetch_count=1)
     channel.basic_consume(queue='call_queue', on_message_callback=process_call)
