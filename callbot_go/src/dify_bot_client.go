@@ -7,7 +7,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"callbot_go/config"
+	// "callbot_go/config"
 )
 
 type DifyBotClient struct {
@@ -31,17 +31,28 @@ type DifyResponse struct {
 	ConversationID string `json:"conversation_id"`
 }
 
-func NewDifyBotClient() *DifyBotClient {
-	cfg := config.GetConfig()
+func NewDifyBotClient(apiURL, apiKey string) *DifyBotClient {
 	return &DifyBotClient{
-		apiURL: cfg.DifyAPIURL,
-		apiKey: cfg.DifyAPIKey,
+		apiURL: apiURL,
+		apiKey: apiKey,
 		headers: map[string]string{
-			"Authorization": fmt.Sprintf("Bearer %s", cfg.DifyAPIKey),
+			"Authorization": fmt.Sprintf("Bearer %s", apiKey),
 			"Content-Type":  "application/json",
 		},
 	}
 }
+
+// func NewDifyBotClient() *DifyBotClient {
+// 	// cfg := config.GetConfig()
+// 	return &DifyBotClient{
+// 		apiURL: cfg.DifyAPIURL,
+// 		apiKey: cfg.DifyAPIKey,
+// 		headers: map[string]string{
+// 			"Authorization": fmt.Sprintf("Bearer %s", cfg.DifyAPIKey),
+// 			"Content-Type":  "application/json",
+// 		},
+// 	}
+// }
 
 func (d *DifyBotClient) GetResponse(query string, userID string) (string, error) {
 	if userID == "" {

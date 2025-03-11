@@ -74,7 +74,8 @@ class CallListener:
         logging.info("Listening for calls...")
 
         while True:
-            e = self.esl_con.recvEvent()
+            # e = self.esl_con.recvEvent()
+            e = self.esl_con.recvEventTimed(1)
             if e:
                 event_name = e.getHeader("Event-Name")
                 
