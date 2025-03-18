@@ -56,5 +56,8 @@ class Config:
     USER_PORT = 5060               # Port user gửi/nhận
     BOT_PORT = 5006               # Port bot gửi/nhận
 
+    # ip
+    #
+
 # Create a singleton instance
 config = Config()

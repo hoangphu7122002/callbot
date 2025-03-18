@@ -27,6 +27,15 @@ groups:
         annotations:
           summary: "High disk usage (instance {{ $labels.instance }})"
           description: "Disk usage is > 85%\n  VALUE = {{ $value }}\n  LABELS: {{ $labels }}"
+
+      - alert: LowCPUUsageDemo
+        expr: avg(rate(node_cpu_seconds_total{mode!="idle"}[5m])) * 100 > 7
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "CPU usage above threshold (instance {{ $labels.instance }})"
+          description: "CPU usage is > 7%\n  VALUE = {{ $value }}%\n  LABELS: {{ $labels }}"
   
   - name: docker_rules
     rules:

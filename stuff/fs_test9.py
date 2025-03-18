@@ -10,7 +10,7 @@ import audioop
 from src.speech_processor import SpeechProcessor
 from src.chatbot_client import ChatbotClient
 from src.text_normalizer import TextNormalizer
-from config.config import config
+# from config.config import config
 import time
 from threading import Event
 import logging
@@ -18,28 +18,6 @@ from multiprocessing import Process, Queue, Manager
 # from metrics import *
 import psutil
 import os
-
-from prometheus_client import Counter, Gauge, Histogram, Summary
-from prometheus_client.core import REGISTRY
-from prometheus_client import CollectorRegistry, generate_latest
-
-# Set necessary environment variables for prometheus multiprocess mode
-# os.environ["PROMETHEUS_MULTIPROC_DIR"] = os.environ.get("PROMETHEUS_MULTIPROC_DIR", "/tmp/prometheus_multiproc")
-# os.makedirs(os.environ["PROMETHEUS_MULTIPROC_DIR"], exist_ok=True)
-
-from prometheus_client import start_http_server
-
-# Initialize metrics server
-# registry = CollectorRegistry()
-# multiprocess.MultiProcessCollector(registry)
-# start_http_server(18000, registry=registry)  # Metrics will be available on port 8000
-start_http_server(18000)
-
-# Overall system metrics - configured for multiprocess mode
-activate_calls = Gauge('callbot_active_calls', 'Number of active calls', ["process"])
-completed_calls = Counter('callbot_completed_calls', 'Number of completed calls', ["process"])
-# call_duration = Histogram('callbot_call_duration_seconds', 'Duration of calls in seconds', ["process"])
-
 
 # Setup logging
 logging.basicConfig(
@@ -60,7 +38,7 @@ class CallHandler:
         self.media_port = media_port
         self.current_phone = phone_number
         self.speech_processor = SpeechProcessor()
-        self.chatbot = ChatbotClient(config)
+        self.chatbot = ChatbotClient()
         self.text_normalizer = TextNormalizer()
         self.playback_event = Event()
         self.is_running = True
@@ -73,9 +51,6 @@ class CallHandler:
         self.worker_id = f"{uuid}"
         self.process = psutil.Process(os.getpid())
         
-        print("active_calls increase")
-        activate_calls.labels(self.worker_id).inc()
-        # activate_calls.inc()
         print("=========done=========")
 
     def decode_pcmu_to_pcm16(self, pcmu_data):
@@ -351,25 +326,15 @@ class CallHandler:
     async def handle_call(self):
         """Handle a specific call"""
         try:
-            # call_timer = call_duration.time()
-            # call_timer.labels(self.worker_id).start()
             logging.info(f"Starting call processing from {self.current_phone}")
             await self.play_welcome_message(self.uuid)
             await self.handle_rtp_stream(self.media_port, self.uuid)
-            # completed_calls.labels(success="true").inc()
-            # completed_calls.labels(self.worker_id).inc()
-            completed_calls.inc()
         except Exception as e:
-            activate_calls.labels(self.worker_id).dec()
-            # activate_calls.dec()
             logging.error(f"Error processing call {self.current_phone}: {e}")
         finally:
-            # active_calls.dec()
-            activate_calls.labels(self.worker_id).dec()
             self.chatbot.end_conversation()
             logging.info(f"Finished processing call from {self.current_phone}")
-            # call_timer.stop()
-            # call_timer.labels(self.worker_id).stop()
+
 
 def handle_call_process(uuid, media_port, phone_number):
     """The function is run in a separate process for each call."""
@@ -416,7 +381,6 @@ class FSCallBotMultiProcess:
                         call_process.start()
                         self.active_calls[uuid] = call_process
                         # Increment active calls counter in Prometheus
-                        # activate_calls.inc()
                         print(f"==========done: {sip_from}===========")
 
                 elif event_name == "CHANNEL_HANGUP":
@@ -435,7 +399,6 @@ class FSCallBotMultiProcess:
                             self.active_calls[uuid].join()
                             del self.active_calls[uuid]
                             # Decrement active calls counter in Prometheus
-                            # activate_calls.dec()
                             logging.info(f"End call: {uuid}")
                             logging.info("===================================")
 
@@ -451,6 +414,5 @@ if __name__ == "__main__":
             process.terminate()
             process.join()
             # Decrement active calls counter for each terminated process
-            # activate_calls.dec()
     except Exception as e:
         logging.error(f"Lỗi: {e}") 

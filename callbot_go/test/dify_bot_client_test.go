@@ -4,11 +4,12 @@ import (
 	"testing"
 	"callbot_go/src"
 	"fmt"
-	// "callbot_go/config"
+	"callbot_go/config"
 )
 
 func TestDifyBotClient(t *testing.T) {
-	client := src.NewDifyBotClient()
+	config := config.GetConfig()
+	client := src.NewDifyBotClient(config.DifyAPIURL, config.DifyAPIKey)
 
 	// Test GetResponse
 	t.Run("Test GetResponse", func(t *testing.T) {

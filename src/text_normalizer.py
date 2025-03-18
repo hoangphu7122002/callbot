@@ -1,4 +1,3 @@
-from underthesea import text_normalize as TTSnorm
 import re
 from datetime import datetime
 
@@ -114,16 +113,11 @@ class TextNormalizer:
         """Normalize Vietnamese text for TTS"""
         # Loại bỏ emoji và ký tự đặc biệt
         text = TextNormalizer.remove_emojis(text)
-        print(text)
-        # Chuẩn hóa cơ bản với underthesea
-        # text = TTSnorm(text)
-        # print(text)
+        
         # Xử lý số và ngày tháng
         text = TextNormalizer.normalize_numbers(text)
-        print(text)
         # Xử lý dấu câu
         text = TextNormalizer.normalize_punctuation(text)
-        print(text)
         # Các thay thế đặc biệt
         replacements = {
             '"': '',
@@ -141,11 +135,9 @@ class TextNormalizer:
         
         for old, new in replacements.items():
             text = text.replace(old, new)
-            
-        print(text)            
+                   
         # Loại bỏ khoảng trắng thừa
         text = ' '.join(text.split())
-        print(text)
         return text.strip()
 
     @staticmethod

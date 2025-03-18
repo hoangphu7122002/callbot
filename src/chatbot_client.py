@@ -1,8 +1,19 @@
 import os
+import sys
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+import os
 from openai import OpenAI
-from config.config import config
-from .dify_bot_client1 import DifyBotClient
-from .local_bot_client import LocalBotClient
+from dify_bot_client import DifyBotClient
+from local_bot_client import LocalBotClient
+
+from dotenv import load_dotenv
+
+# Setup paths and environment
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT_DIR = os.path.abspath(os.path.join(BASE_DIR, ".."))
+dotenv_path = os.path.join(ROOT_DIR, ".env")
+load_dotenv(dotenv_path)
 
 class ChatbotClient:
     """
@@ -10,24 +21,23 @@ class ChatbotClient:
     Maintains conversation history and handles the chat flow.
     """
     
-    def __init__(self, config):
+    def __init__(self):
         """Initialize OpenAI client and conversation history"""
-        self.config = config
         # Khởi tạo end_keywords cho mọi loại bot
-        self.end_keywords = config.END_CONVERSATION_KEYWORDS
+        self.end_keywords = os.getenv("END_CONVERSATION_KEYWORDS").split(",")
         
-        if config.BOT_TYPE == "local":
-            self.bot = LocalBotClient(api_url=config.LOCAL_LLM_URL)
-            self.client = OpenAI(api_key=config.OPENAI_API_KEY)
-        elif config.BOT_TYPE == "dify":
+        if os.getenv("BOT_TYPE") == "local":
+            self.bot = LocalBotClient(api_url=os.getenv("LOCAL_LLM_URL"))
+            self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        elif os.getenv("BOT_TYPE") == "dify":
             self.bot = DifyBotClient(
-                api_url=config.DIFY_API_URL,
-                api_key=config.DIFY_API_KEY
+                api_url=os.getenv("DIFY_API_URL"),
+                api_key=os.getenv("DIFY_API_KEY")
             )
-            self.client = OpenAI(api_key=config.OPENAI_API_KEY)
+            self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         else:
             self.conversation_history = []
-            self.client = OpenAI(api_key=config.OPENAI_API_KEY)
+            self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
     
     def sync_get_response(self, message):
         """
@@ -49,7 +59,7 @@ class ChatbotClient:
             Maintains conversation history for context
             Handles API errors gracefully
         """
-        if self.config.BOT_TYPE == "dify":
+        if os.getenv("BOT_TYPE") == "dify":
             # Reset conversation nếu là tin nhắn đầu tiên
             if not hasattr(self, 'conversation_started'):
                 self.bot.reset_conversation()
@@ -62,7 +72,7 @@ class ChatbotClient:
             try:
                 # Sử dụng API mới của OpenAI
                 response = self.client.chat.completions.create(
-                    model=self.config.GPT_MODEL,
+                    model=os.getenv("GPT_MODEL"),
                     messages=self.conversation_history
                 )
                 
@@ -92,9 +102,9 @@ class ChatbotClient:
             Maintains conversation history for context
             Handles API errors gracefully
         """
-        if self.config.BOT_TYPE == "local":
+        if os.getenv("BOT_TYPE") == "local":
             return await self.bot.get_response(message)
-        elif self.config.BOT_TYPE == "dify":
+        elif os.getenv("BOT_TYPE") == "dify":
             # Reset conversation nếu là tin nhắn đầu tiên
             if not hasattr(self, 'conversation_started'):
                 self.bot.reset_conversation()
@@ -107,7 +117,7 @@ class ChatbotClient:
             try:
                 # Sử dụng API mới của OpenAI
                 response = self.client.chat.completions.create(
-                    model=self.config.GPT_MODEL,
+                    model=os.getenv("GPT_MODEL"),
                     messages=self.conversation_history
                 )
                 
@@ -148,3 +158,10 @@ class ChatbotClient:
             self.bot.end_conversation()
         except:
             print("not implementation for openai")
+
+if __name__ == "__main__":
+    chatbot = ChatbotClient()
+    print(chatbot.sync_get_response("Hello"))
+    # print(chatbot.get_response("Hello"))
+    # print(chatbot.should_end_conversation("Hello"))
+    # chatbot.end_conversation()

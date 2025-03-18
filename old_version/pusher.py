@@ -5,15 +5,25 @@ import time
 from threading import Thread
 from freeswitchESL import ESL
 import asyncio
+import os
+from dotenv import load_dotenv
 
+import os
+import sys
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT_DIR = os.path.abspath(os.path.join(BASE_DIR, ".."))
+dotenv_path = os.path.join(ROOT_DIR, ".env")
+load_dotenv(dotenv_path)
 
 # Redis Configuration
-redis_client = redis.StrictRedis(host='localhost', port=6380, db=0, decode_responses=True)
+redis_client = redis.StrictRedis(host=os.getenv('REDIS_HOST'), port=int(os.getenv('REDIS_PORT')), db=0, decode_responses=True)
 
 # RabbitMQ Configuration
-rabbitmq_connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
+rabbitmq_connection = pika.BlockingConnection(pika.ConnectionParameters(os.getenv('RABBIT_MQ_HOST')))
 rabbitmq_channel = rabbitmq_connection.channel()
-rabbitmq_channel.queue_declare(queue='call_queue', durable=True)
+rabbitmq_channel.queue_declare(queue=os.getenv('RABBIT_MQ_QUEUE'), durable=False)
 
 
 
@@ -22,27 +32,23 @@ def get_last_stored_calldata():
     if keys:
         last_id = sorted(keys)[-1]  # Get the last stored message
         call_data = redis_client.get(last_id)
-        return last_id, call_data
-    return None, None
+
+        uuid = json.loads(call_data).get("uuid")
+        return last_id, call_data, uuid
+    return None, None, None
 
 def handle_hangup_event():
     #ESL Configuration
-    esl_con = ESL.ESLconnection("127.0.0.1", "8021", "ClueCon")
-    print("Connect ESL Successfully")
+    esl_con = ESL.ESLconnection(os.getenv('ESL_HOST'), os.getenv('ESL_PORT'), os.getenv('ESL_PASSWORD'))
+    #print("Connect ESL Successfully")
     if not esl_con.connected():
         raise Exception("Failed to connect to FreeSWITCH")
     esl_con.events("plain", "CHANNEL_HANGUP")
-    print("Listening for HANGUP")
     while True:
-        #await asyncio.sleep(1)  # GAP TIME
-        # print('hehe')
         e = esl_con.recvEventTimed(1)  # 1 second timeout
-        # e = esl_con.recvEvent()
-        print('e: ',e)
-        # print('hihi')
         if e:
             event_name = e.getHeader("Event-Name")
-            print("Checking for hangup")
+            #print("Checking for hangup")
             if event_name == "CHANNEL_HANGUP":
                 call_id = e.getHeader("Unique-ID")
                 if call_id:
@@ -65,17 +71,21 @@ def handle_hangup_event():
 
 def pusher():
     while True:
-        #await asyncio.sleep(5)  # GAP TIME
-        print("Checking for open spot")
-        queue = rabbitmq_channel.queue_declare(queue='call_queue', passive=True)
+        queue = rabbitmq_channel.queue_declare(queue=os.getenv('RABBIT_MQ_QUEUE'), passive=True)
         if queue.method.message_count == 0 and queue.method.consumer_count > 0:
-            last_id, call_data = get_last_stored_calldata()
+            esl_con = ESL.ESLconnection(os.getenv('ESL_HOST'), os.getenv('ESL_PORT'), os.getenv('ESL_PASSWORD'))
+            if not esl_con.connected():
+                raise Exception("Failed to connect to FreeSWITCH")
+            last_id, call_data, uuid = get_last_stored_calldata()
+            # print("Stopping queue music")
+            esl_con.api("uuid_break", uuid)
             if call_data:
-                rabbitmq_channel.basic_publish(exchange='', routing_key='call_queue', body=call_data)
+                rabbitmq_channel.basic_publish(exchange='', routing_key=os.getenv('RABBIT_MQ_QUEUE'), body=call_data)
                 print(f"[Pusher] Moved message {last_id} from Redis to RabbitMQ")
                 redis_client.delete(last_id)
             else:
-                print("[Pusher] No messages in Redis to push")
+                # print("[Pusher] No messages in Redis to push")
+                pass
 
 def main():
     # while True:
