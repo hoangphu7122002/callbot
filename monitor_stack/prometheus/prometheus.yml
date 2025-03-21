@@ -1,0 +1,46 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  scrape_timeout: 10s
+
+# Alert manager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager:9093
+
+# Rule files to load
+rule_files:
+  - "rules/*.yml"
+
+# Scrape configurations
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'node_exporter'
+    static_configs:
+      - targets: ['node_exporter:9100']
+
+  - job_name: 'callbot'
+    scrape_interval: 5s  # Thu thập dữ liệu thường xuyên để giám sát theo thời gian thực
+    static_configs:
+      - targets: ['34.174.214.130:18000']  # Metrics được CallBot cung cấp trên localhost
+
+
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']
+
+  # Add this section if you want to monitor your Docker containers
+  - job_name: 'docker'
+    static_configs:
+      - targets: ['cadvisor:8080']
+
+  # You can add more targets to monitor, like your applications
+  # Example for a custom application
+  # - job_name: 'app'
+  #   static_configs:
+  #     - targets: ['app:8000'] 

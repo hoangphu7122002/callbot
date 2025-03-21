@@ -1,0 +1,42 @@
+global:
+  resolve_timeout: 5m
+  # Email settings
+  smtp_smarthost: 'smtp.gmail.com:587'
+  smtp_from: 'hoangphu7122002@gmail.com'
+  smtp_auth_username: 'hoangphu7122002@gmail.com'
+  smtp_auth_password: 'tlhr klsg qnzg mixu'
+  smtp_require_tls: true
+
+route:
+  group_by: ['alertname', 'job']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  receiver: 'email-notifications'  # Change default receiver to email
+  routes:
+  - match:
+      severity: warning
+    receiver: 'email-notifications'
+
+receivers:
+- name: 'web.hook'
+  webhook_configs:
+  - url: 'http://34.174.214.130:5001/'
+    send_resolved: true
+
+- name: 'email-notifications'
+  email_configs:
+  - to: 'hoangphu7122002ai@gmail.com'
+    send_resolved: true
+
+# You can add more receivers, like email, Slack, etc.
+# - name: 'email-notifications'
+#   email_configs:
+#   - to: 'your-email@example.com'
+
+inhibit_rules:
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname', 'instance'] 
