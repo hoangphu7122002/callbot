@@ -382,6 +382,7 @@ async def process_audio(audio_data, uuid, current_phone):
         
     except Exception as e:
         print(f"Lỗi khi xử lý audio: {e}")
+        return "HANGUP"
     finally:
         playback_event.clear()
 

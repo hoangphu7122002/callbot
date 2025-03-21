@@ -7,12 +7,14 @@ import socket
 import io
 import os
 from datetime import datetime
+from threading import Event
 from dotenv import load_dotenv
 from src.speech_processor import SpeechProcessor
 from src.chatbot_client import ChatbotClient
 from src.text_normalizer import TextNormalizer
 from src.vad_processor import VADProcessor
-from src.playback_handler import PlaybackHandler
+from freeswitchESL import ESL
+from pydub import AudioSegment
 from src.db_handler import DBHandler
 from src.queue_handler import QueueHandler
 
@@ -48,7 +50,23 @@ speech_processor = SpeechProcessor()
 chatbot = ChatbotClient()
 text_normalizer = TextNormalizer()
 vad_processor = VADProcessor()
-playback_handler = PlaybackHandler()
+esl_con = ESL.ESLconnection(
+    os.getenv('ESL_HOST'), 
+    os.getenv('ESL_PORT'), 
+    os.getenv('ESL_PASSWORD')
+)
+if not esl_con.connected():
+    raise Exception("Failed to connect to FreeSWITCH")
+
+# Add global playback event
+playback_event = Event()
+
+# Audio file paths
+welcome_file = os.getenv('WELCOME_FILE')
+processing_file = os.getenv('PROCESSING_FILE')
+goodbye_file = os.getenv('GOODBYE_FILE')
+record_path = os.getenv('RECORD_PATH')
+
 # Worker primarily needs PostgreSQL for call activity logging
 db_handler = DBHandler(init_postgres=True, init_redis=False, init_minio=False)
 queue_handler = QueueHandler()
@@ -59,10 +77,147 @@ is_running = True
 current_phone = None
 start_time = None
 
+# Add playback functions
+async def play_welcome_message(uuid, phone_number):
+    """Play the welcome message to the caller."""
+    playback_event.set()
+    try:
+        esl_con.execute("playback", welcome_file, uuid)
+        
+        # Calculate duration from audio file
+        audio = AudioSegment.from_wav(welcome_file)
+        playback_duration = len(audio) / 1000.0
+        
+        logging.info(f"Playing welcome message for {phone_number}, duration: {playback_duration}s")
+        await asyncio.sleep(playback_duration)
+        
+        return True
+    except Exception as e:
+        logging.error(f"Error playing welcome message: {e}")
+        return False
+    finally:
+        playback_event.clear()
+        
+async def play_processing_message(uuid, phone_number):
+    """Play the processing message while waiting for a response."""
+    try:
+        esl_con.execute("playback", processing_file, uuid)
+        
+        # Calculate duration from audio file
+        audio = AudioSegment.from_wav(processing_file)
+        playback_duration = len(audio) / 1000.0
+        
+        logging.info(f"Playing processing message for {phone_number}, duration: {playback_duration}s")
+        await asyncio.sleep(playback_duration)
+        
+        return True
+    except Exception as e:
+        logging.error(f"Error playing processing message: {e}")
+        return False
+        
+async def play_goodbye_message(uuid, phone_number):
+    """Play the goodbye message and end the call."""
+    playback_event.set()
+    try:
+        esl_con.execute("playback", goodbye_file, uuid)
+        
+        # Calculate duration from audio file
+        audio = AudioSegment.from_wav(goodbye_file)
+        playback_duration = len(audio) / 1000.0
+        
+        logging.info(f"Playing goodbye message for {phone_number}, duration: {playback_duration}s")
+        await asyncio.sleep(playback_duration)
+        
+        # End the call
+        esl_con.api("uuid_kill", uuid)
+        return "HANGUP"
+    except Exception as e:
+        logging.error(f"Error playing goodbye message: {e}")
+        return False
+    finally:
+        playback_event.clear()
+        
+async def play_response(uuid, phone_number, audio_data, filename=None):
+    """Play an audio response to the caller."""
+    try:
+        if filename is None:
+            filename = f"response_{uuid}.wav"
+        
+        # Ensure record_path exists
+        if not os.path.exists(record_path):
+            try:
+                os.makedirs(record_path, exist_ok=True)
+                logging.info(f"Created record path directory: {record_path}")
+            except Exception as e:
+                logging.warning(f"Failed to create record path: {e}")
+                # Use a fallback path in current directory
+                record_path_local = os.path.join(os.getcwd(), "records")
+                os.makedirs(record_path_local, exist_ok=True)
+                logging.info(f"Using fallback path: {record_path_local}")
+                output_file = os.path.join(record_path_local, filename)
+            else:
+                output_file = os.path.join(record_path, filename)
+        else:
+            output_file = os.path.join(record_path, filename)
+        
+        # Convert and save audio
+        audio_segment = AudioSegment.from_mp3(io.BytesIO(audio_data))
+        audio_segment.export(output_file, format='wav')
+        
+        # Log file creation for debugging
+        if os.path.exists(output_file):
+            file_size = os.path.getsize(output_file)
+            logging.info(f"Created response file: {output_file}, size: {file_size} bytes")
+        else:
+            logging.warning(f"Failed to create response file: {output_file}")
+        
+        # Disable DTMF during playback
+        esl_con.execute("uuid_setvar", f"{uuid} playback_terminators none")
+        
+        # Play the audio
+        esl_con.execute("playback", output_file, uuid)
+        
+        # Wait for playback to complete
+        audio_duration = len(audio_segment) / 1000.0
+        logging.info(f"Playing response for {phone_number}, duration: {audio_duration}s")
+        await asyncio.sleep(audio_duration + 0.2)  # Add small buffer
+        
+        return audio_duration
+    except Exception as e:
+        logging.error(f"Error playing response: {e}")
+        return 0
+        
+async def check_hangup(uuid, phone_number):
+    """Check if the call has been hung up."""
+    try:
+        e = esl_con.recvEventTimed(1)  # 1 second timeout
+        if e:
+            event_name = e.getHeader("Event-Name")
+            if event_name == "CHANNEL_HANGUP":
+                current_uuid = e.getHeader("Unique-ID")
+                if current_uuid == uuid:
+                    logging.info(f"Call hangup detected: {uuid} ({phone_number})")
+                    return "HANGUP"
+        return None
+    except Exception as e:
+        logging.error(f"Error checking hangup: {e}")
+        return None
+        
+def is_playback_active():
+    """Check if playback is currently active."""
+    return playback_event.is_set()
+    
+def set_playback_active(active=True):
+    """Set the playback active state."""
+    if active:
+        playback_event.set()
+    else:
+        playback_event.clear()
+    
 async def process_audio(audio_data, uuid, phone_number):
     """Process audio data and generate response."""
     try:
-        playback_handler.set_playback_active(True)
+        set_playback_active(True)
         
         async def main_processing():
             # Handle empty audio (silence)
@@ -80,7 +235,7 @@ async def process_audio(audio_data, uuid, phone_number):
             logging.info(f"Speech to text time: {b - a}s")
             
             # Check for hangup
-            if await playback_handler.check_hangup(uuid, phone_number) == "HANGUP":
+            if await check_hangup(uuid, phone_number) == "HANGUP":
                 return "HANGUP"
             
             if not user_text:
@@ -91,7 +246,7 @@ async def process_audio(audio_data, uuid, phone_number):
             # Check for end conversation keywords
             if chatbot.should_end_conversation(user_text.lower()) or user_text.lower() == "không" or user_text.lower() == "xong":
                 logging.info(f"End conversation keyword detected from {phone_number}: {user_text}")
-                return await playback_handler.play_goodbye_message(uuid, phone_number)
+                return await play_goodbye_message(uuid, phone_number)
             
             # Get chatbot response
             a = time.time()
@@ -102,7 +257,7 @@ async def process_audio(audio_data, uuid, phone_number):
             bot_response, flag = text_normalizer.check_end_conversation(bot_response)
             if flag == True:
                 logging.info(f"End conversation detected in bot response to {phone_number}")
-                return await playback_handler.play_goodbye_message(uuid, phone_number)
+                return await play_goodbye_message(uuid, phone_number)
             
             # Normalize and log response
             normalized_response = text_normalizer.normalize_vietnamese_text(bot_response)
@@ -113,14 +268,14 @@ async def process_audio(audio_data, uuid, phone_number):
             logging.info(f"Bot response to {phone_number}: {normalized_response}")
             
             # Check for hangup
-            if await playback_handler.check_hangup(uuid, phone_number) == "HANGUP":
+            if await check_hangup(uuid, phone_number) == "HANGUP":
                 return "HANGUP"
             
             return normalized_response
 
         # Run processing message in parallel with main processing when audio exists
         if audio_data:
-            processing_task = asyncio.create_task(playback_handler.play_processing_message(uuid, phone_number))
+            processing_task = asyncio.create_task(play_processing_message(uuid, phone_number))
             main_task = asyncio.create_task(main_processing())
             
             # Wait for either task to complete
@@ -150,7 +305,7 @@ async def process_audio(audio_data, uuid, phone_number):
             return "HANGUP"
 
         # Check for hangup before TTS
-        if await playback_handler.check_hangup(uuid, phone_number) == "HANGUP":
+        if await check_hangup(uuid, phone_number) == "HANGUP":
             return "HANGUP"
             
         # Text-to-speech conversion
@@ -168,12 +323,12 @@ async def process_audio(audio_data, uuid, phone_number):
         logging.info(f"Text to speech time: {b - a}s")
         
         # Check for hangup before playback
-        if await playback_handler.check_hangup(uuid, phone_number) == "HANGUP":
+        if await check_hangup(uuid, phone_number) == "HANGUP":
             return "HANGUP"
         
         # Play the response
         a = time.time()
-        audio_duration = await playback_handler.play_response(uuid, phone_number, response.content)
+        audio_duration = await play_response(uuid, phone_number, response.content)
         b = time.time()
         
         processing_time_playback = b - a
@@ -183,7 +338,7 @@ async def process_audio(audio_data, uuid, phone_number):
     except Exception as e:
         logging.error(f"Error processing audio: {e}")
     finally:
-        playback_handler.set_playback_active(False)
+        set_playback_active(False)
 
 async def handle_rtp_stream(port, uuid, phone_number, ch, method):
     """Handle an RTP stream for a call."""
@@ -211,12 +366,15 @@ async def handle_rtp_stream(port, uuid, phone_number, ch, method):
     try:
         while True:
             # Check for hangup
-            if await playback_handler.check_hangup(uuid, phone_number) == "HANGUP":
+            if await check_hangup(uuid, phone_number) == "HANGUP":
                 logging.info(f"Hangup detected for {phone_number}, ending RTP stream")
+                print("===============")
+                print('here')
+                print("===============")
                 break
-
+            print('here')
             # Skip processing if playback is active
-            if playback_handler.is_playback_active():
+            if is_playback_active():
                 await asyncio.sleep(0.1)
                 continue
                 
@@ -259,7 +417,7 @@ async def handle_rtp_stream(port, uuid, phone_number, ch, method):
                 total_silence_count += 1
                 
             # Check for hangup
-            if await playback_handler.check_hangup(uuid, phone_number) == "HANGUP":
+            if await check_hangup(uuid, phone_number) == "HANGUP":
                 break
                 
             # Process audio when either:
@@ -291,7 +449,7 @@ async def handle_rtp_stream(port, uuid, phone_number, ch, method):
                 # Check if we need to end call due to lack of response
                 if audio_data is None and last_response_was_confirmation >= 2:
                     logging.info(f"{phone_number}: No response after confirmation question, ending call")
-                    if await playback_handler.play_goodbye_message(uuid, phone_number) == "HANGUP":
+                    if await play_goodbye_message(uuid, phone_number) == "HANGUP":
                         break
                 
                 # Update confirmation counter
@@ -313,7 +471,7 @@ async def handle_rtp_stream(port, uuid, phone_number, ch, method):
                 # End call if multiple confirmations without response
                 if last_response_was_confirmation >= 2:
                     logging.info(f"{phone_number}: No response after confirmation question, ending call")
-                    if await playback_handler.play_goodbye_message(uuid, phone_number) == "HANGUP":
+                    if await play_goodbye_message(uuid, phone_number) == "HANGUP":
                         break
                 
                 logging.info(f"{phone_number}: Long silence detected ({total_silence_count} frames), asking confirmation")
@@ -358,7 +516,7 @@ def process_call(ch, method, properties, body):
         ch.basic_ack(delivery_tag=method.delivery_tag)
         
         # Play welcome message and handle RTP stream
-        asyncio.run(playback_handler.play_welcome_message(uuid, phone_number))
+        asyncio.run(play_welcome_message(uuid, phone_number))
         asyncio.run(handle_rtp_stream(int(media_port), uuid, phone_number, ch, method))
         
     except Exception as e:
@@ -372,6 +530,9 @@ def main():
     try:
         # Reset VAD state
         vad_processor.reset_state()
+        
+        # Subscribe to FreeSWITCH events for hangup detection
+        esl_con.events("plain", "CHANNEL_ANSWER CHANNEL_HANGUP")
         
         # Start consuming from the queue
         queue_handler.start_consuming(process_call)

@@ -10,13 +10,14 @@ from dotenv import load_dotenv
 
 import os
 import sys
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-ROOT_DIR = os.path.abspath(os.path.join(BASE_DIR, ".."))
-dotenv_path = os.path.join(ROOT_DIR, ".env")
-load_dotenv(dotenv_path)
+# BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# ROOT_DIR = os.path.abspath(os.path.join(BASE_DIR, ".."))
+# dotenv_path = os.path.join(ROOT_DIR, ".env")
+# load_dotenv(dotenv_path)
 
+load_dotenv()
 # Redis Configuration
 redis_client = redis.StrictRedis(host=os.getenv('REDIS_HOST'), port=int(os.getenv('REDIS_PORT')), db=0, decode_responses=True)
 

@@ -10,6 +10,7 @@ import logging
 from openai import OpenAI
 import os
 import random
+from pydub import AudioSegment
 
 from dotenv import load_dotenv
 
@@ -58,64 +59,112 @@ class SpeechProcessor:
             print(f"Lỗi API speech-to-text local: {response.status_code}")
             return ''
 
-    async def _openai_speech_to_text(self, audio_data, save_dir="/home/hoangphu7122002/callbot/records"):
-        """Lưu audio vào thư mục và gửi đến OpenAI"""
-        try:
-            uuid = random.randint(1,1000000)
-            # Đảm bảo thư mục tồn tại
-            os.makedirs(save_dir, exist_ok=True)
-
-            # Định dạng đường dẫn file
-            audio_filename = f"{save_dir}/asr_debug_{uuid}.wav"
-
-            # Lưu file WAV
-            with wave.open(audio_filename, 'wb') as wav_file:
-                wav_file.setnchannels(int(os.getenv("AUDIO_CHANNELS")))  # Default 1 kênh
-                wav_file.setsampwidth(int(os.getenv("SAMPLE_WIDTH")))   # Default 16-bit = 2 bytes
-                wav_file.setframerate(int(os.getenv("AUDIO_RATE"))) # Default 16kHz
-                wav_file.writeframes(audio_data)
-            
-            logging.info(f"Audio saved at: {audio_filename}")
-
-            # Gửi file đến OpenAI để nhận diện giọng nói
-            with open(audio_filename, 'rb') as audio_file:
-                response = self.client.audio.transcriptions.create(
-                    model=os.getenv("STT_MODEL", "whisper-1"),
-                    file=audio_file,
-                    language=os.getenv("STT_LANGUAGE", "vi")
-                )
-
-            return response.text
-
-        except Exception as e:
-            logging.error(f"Error processing audio: {e}")
-            return None
-
-    # async def _openai_speech_to_text(self, audio_data: bytes) -> str:
+    # async def _openai_speech_to_text(self, audio_data, save_dir="/home/hoangphu7122002/callbot/records"):
+    #     """Lưu audio vào thư mục và gửi đến OpenAI"""
     #     try:
-    #         import tempfile
+    #         uuid = random.randint(1,1000000)
+    #         # Đảm bảo thư mục tồn tại
+    #         os.makedirs(save_dir, exist_ok=True)
+
+    #         # Định dạng đường dẫn file
+    #         audio_filename = f"{save_dir}/asr_debug_{uuid}.wav"
+
+    #         # Lưu file WAV
+    #         with wave.open(audio_filename, 'wb') as wav_file:
+    #             wav_file.setnchannels(int(os.getenv("AUDIO_CHANNELS")))  # Default 1 kênh
+    #             wav_file.setsampwidth(int(os.getenv("SAMPLE_WIDTH")))   # Default 16-bit = 2 bytes
+    #             wav_file.setframerate(int(os.getenv("AUDIO_RATE"))) # Default 16kHz
+    #             wav_file.writeframes(audio_data)
             
-    #         # Tạo temporary file
-    #         with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as temp_wav:
-    #             with wave.open(temp_wav.name, 'wb') as wav_file:
-    #                 wav_file.setnchannels(int(os.getenv("AUDIO_CHANNELS")))
-    #                 wav_file.setsampwidth(int(os.getenv("SAMPLE_WIDTH")))
-    #                 wav_file.setframerate(int(os.getenv("AUDIO_RATE")))
-    #                 wav_file.writeframes(audio_data)
-                
-    #             # Mở file để gửi đến OpenAI
-    #             with open(temp_wav.name, 'rb') as audio_file:
-    #                 response = self.client.audio.transcriptions.create(
-    #                     model=os.getenv("STT_MODEL"),
-    #                     file=audio_file,
-    #                     language=os.getenv("STT_LANGUAGE")
-    #                 )
-            
+    #         logging.info(f"Audio saved at: {audio_filename}")
+
+    #         # Gửi file đến OpenAI để nhận diện giọng nói
+    #         with open(audio_filename, 'rb') as audio_file:
+    #             response = self.client.audio.transcriptions.create(
+    #                 model=os.getenv("STT_MODEL", "whisper-1"),
+    #                 file=audio_file,
+    #                 language=os.getenv("STT_LANGUAGE", "vi")
+    #             )
+
     #         return response.text
-            
+
     #     except Exception as e:
-    #         print(f"Lỗi khi sử dụng OpenAI STT: {e}")
-    #         return ''
+    #         logging.error(f"Error processing audio: {e}")
+    #         return None
+    
+    
+    # async def _openai_speech_to_text(self, audio_data, save_dir="/home/hoangphu7122002/callbot/records"):
+    #     """Lưu audio vào thư mục, thêm 1s silence trước và sau, rồi gửi đến OpenAI"""
+    #     try:
+    #         uuid = random.randint(1, 1000000)
+    #         os.makedirs(save_dir, exist_ok=True)
+
+    #         # Định dạng đường dẫn file
+    #         audio_filename = f"{save_dir}/asr_debug_{uuid}.wav"
+
+    #         # Kiểm tra nếu audio_data là raw PCM, ta phải đóng gói vào WAV
+    #         wav_stream = BytesIO()
+    #         with wave.open(wav_stream, 'wb') as wav_file:
+    #             num_channels = int(os.getenv("AUDIO_CHANNELS", 1))  # Default 1
+    #             sample_width = int(os.getenv("SAMPLE_WIDTH", 2))  # Default 16-bit = 2 bytes
+    #             frame_rate = int(os.getenv("AUDIO_RATE", 16000))  # Default 16kHz
+
+    #             wav_file.setnchannels(num_channels)
+    #             wav_file.setsampwidth(sample_width)
+    #             wav_file.setframerate(frame_rate)
+    #             wav_file.writeframes(audio_data)  # Ghi dữ liệu raw vào WAV
+
+    #         # Đọc lại WAV từ memory
+    #         wav_stream.seek(0)
+    #         audio = AudioSegment.from_wav(wav_stream)
+
+    #         # Thêm 1 giây silence trước và sau
+    #         silence = AudioSegment.silent(duration=1000)  # 1s
+    #         processed_audio = silence + audio + silence
+
+    #         # Xuất file WAV sau khi thêm silence
+    #         processed_audio.export(audio_filename, format="wav")
+    #         logging.info(f"Processed audio saved at: {audio_filename}")
+
+    #         # Gửi file đến OpenAI
+    #         with open(audio_filename, 'rb') as audio_file:
+    #             response = self.client.audio.transcriptions.create(
+    #                 model=os.getenv("STT_MODEL", "whisper-1"),
+    #                 file=audio_file,
+    #                 language=os.getenv("STT_LANGUAGE", "vi")
+    #             )
+
+    #         return response.text
+
+    #     except Exception as e:
+    #         logging.error(f"Error processing audio: {e}")
+    #         return None
+
+    async def _openai_speech_to_text(self, audio_data: bytes) -> str:
+        try:
+            import tempfile
+            
+            # Tạo temporary file
+            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as temp_wav:
+                with wave.open(temp_wav.name, 'wb') as wav_file:
+                    wav_file.setnchannels(int(os.getenv("AUDIO_CHANNELS")))
+                    wav_file.setsampwidth(int(os.getenv("SAMPLE_WIDTH")))
+                    wav_file.setframerate(int(os.getenv("AUDIO_RATE")))
+                    wav_file.writeframes(audio_data)
+                
+                # Mở file để gửi đến OpenAI
+                with open(temp_wav.name, 'rb') as audio_file:
+                    response = self.client.audio.transcriptions.create(
+                        model=os.getenv("STT_MODEL"),
+                        file=audio_file,
+                        language=os.getenv("STT_LANGUAGE")
+                    )
+            
+            return response.text
+            
+        except Exception as e:
+            print(f"Lỗi khi sử dụng OpenAI STT: {e}")
+            return ''
 
     async def text_to_speech(self, text, uuid=None):
         """Convert text to speech using configured provider"""

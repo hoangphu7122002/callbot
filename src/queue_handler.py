@@ -56,6 +56,7 @@ class QueueHandler:
     def _get_esl_connection(self):
         """Get or create a FreeSWITCH ESL connection."""
         if self._esl_con is None or not self._esl_con.connected():
+            print(self.esl_host, self.esl_port, self.esl_password)
             self._esl_con = ESL.ESLconnection(self.esl_host, self.esl_port, self.esl_password)
             if not self._esl_con.connected():
                 raise Exception("Failed to connect to FreeSWITCH")

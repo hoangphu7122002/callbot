@@ -10,12 +10,14 @@ import os
 
 import os
 import sys
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-ROOT_DIR = os.path.abspath(os.path.join(BASE_DIR, ".."))
-dotenv_path = os.path.join(ROOT_DIR, ".env")
-load_dotenv(dotenv_path)
+# BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# ROOT_DIR = os.path.abspath(os.path.join(BASE_DIR, ".."))
+# dotenv_path = os.path.join(ROOT_DIR, ".env")
+# load_dotenv(dotenv_path)
+
+load_dotenv()
 
 # Import metrics for Prometheus monitoring
 # from metrics import activate_calls, completed_calls
@@ -44,7 +46,7 @@ minio_client = Minio(
 
 # File and bucket details
 bucket_name = os.getenv('MINIO_BUCKET_NAME') #Goto Config File
-file_path = os.getenv('RECORD_PATH')  #Goto Config File
+file_path = os.getenv('PRODUCER_RECORD_PATH')  #Goto Config File
 
 def minio_upload(uuid, bucket_name, file_path):
     final_audio_file = file_path + '/' + uuid + '.wav'

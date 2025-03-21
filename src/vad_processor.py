@@ -20,12 +20,12 @@ class VADProcessor:
         load_dotenv()
         
         # Audio configuration for WebRTC VAD
-        self.SAMPLE_RATE = int(os.getenv('AUDIO_RATE', '8000'))
-        self.FRAME_DURATION_MS = int(os.getenv('FRAME_DURATION_MS', '20'))
+        self.SAMPLE_RATE = int(os.getenv('AUDIO_RATE'))
+        self.FRAME_DURATION_MS = int(os.getenv('FRAME_DURATION_MS'))
         self.FRAME_SIZE = int(self.SAMPLE_RATE * self.FRAME_DURATION_MS / 1000) * 2  # 2 bytes/sample
 
         # VAD configuration
-        self.VAD_MODE = int(os.getenv('VAD_MODE', '3'))  # 0: least aggressive, 3: most aggressive
+        self.VAD_MODE = int(os.getenv('VAD_MODE'))  # 0: least aggressive, 3: most aggressive
         self.vad = webrtcvad.Vad(self.VAD_MODE)
         
         # Speech detection configuration
@@ -40,7 +40,7 @@ class VADProcessor:
         
         logging.info(f"VAD initialized with mode: {self.VAD_MODE}, Sample rate: {self.SAMPLE_RATE}, "
                      f"Min volume: {self.MIN_VOLUME_THRESHOLD}, Speech volume: {self.SPEECH_VOLUME_THRESHOLD}")
-
+        logging.info("=======================test=======================")
     def frame_generator(self, frame_duration_ms, audio, sample_rate):
         """Split audio data into fixed-length frames."""
         n = int(sample_rate * frame_duration_ms / 1000) * 2  # bytes per frame
