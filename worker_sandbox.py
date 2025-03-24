@@ -190,8 +190,8 @@ def decode_pcmu_to_pcm16(pcmu_data):
 
 async def play_processing_message(uuid, current_phone):
     """Phát thông báo đang xử lý bất đồng bộ"""
-    processing_file = os.getenv('PROCESSING_FILE') 
-    esl_con.execute("playback", processing_file, uuid)
+    processing_file = os.getenv('CONTAINER_PROCESSING_FILE') 
+    esl_con.execute("playback", processing_file.replace(os.getenv('CONTAINER_PROCESSING_FILE'), os.getenv('PROCESSING_FILE')), uuid)
     
     # Tính thời gian của file processing
     audio = AudioSegment.from_wav(processing_file)
@@ -224,9 +224,9 @@ async def play_goodbye_message(uuid, current_phone):
     try:
         time.sleep(1)
         playback_event.set()
-        goodbye_file = os.getenv('GOODBYE_FILE')
+        goodbye_file = os.getenv('CONTAINER_GOODBYE_FILE')
         
-        esl_con.execute("playback", goodbye_file, uuid)
+        esl_con.execute("playback", goodbye_file.replace(os.getenv('CONTAINER_GOODBYE_FILE'), os.getenv('GOODBYE_FILE')), uuid)
         
         # Tính thời gian của file goodbye
         audio = AudioSegment.from_wav(goodbye_file)
@@ -349,7 +349,7 @@ async def process_audio(audio_data, uuid, current_phone):
             input=response_text
         )
         
-        output_file = os.getenv('RECORD_PATH') + f"/response_{uuid}.wav"
+        output_file = os.getenv('CONTAINER_RECORD_PATH') + f"/response_{uuid}.wav"
         audio_segment = AudioSegment.from_mp3(io.BytesIO(response.content))
         audio_segment.export(output_file, format='wav')
         b = time.time()
@@ -365,7 +365,7 @@ async def process_audio(audio_data, uuid, current_phone):
         # Thêm logging cho playback response
         a = time.time()
         esl_con.execute("uuid_setvar", f"{uuid} playback_terminators none")
-        esl_con.execute("playback", output_file, uuid)
+        esl_con.execute("playback", output_file.replace(os.getenv('CONTAINER_RECORD_PATH'), os.getenv('RECORD_PATH')), uuid)
         
         # Tính thời gian playback dựa trên độ dài audio
         audio_duration = len(audio_segment) / 1000.0
@@ -646,9 +646,9 @@ async def handle_rtp_stream(port, uuid, current_phone, ch, method):
 async def play_welcome_message(uuid, current_phone):
     """Phát thông điệp chào mừng"""
     print('play_welcome_message')
-    welcome_file = os.getenv('WELCOME_FILE') 
+    welcome_file = os.getenv('CONTAINER_WELCOME_FILE') 
     playback_event.set()
-    esl_con.execute("playback", welcome_file, uuid)
+    esl_con.execute("playback", welcome_file.replace(os.getenv('CONTAINER_WELCOME_FILE'), os.getenv('WELCOME_FILE')), uuid)
     
     # Tính thời gian của file welcome
     audio = AudioSegment.from_wav(welcome_file)
