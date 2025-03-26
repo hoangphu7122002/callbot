@@ -1,0 +1,148 @@
+apiVersion: v1
+data:
+  .env: |-
+    # API Endpoints
+    TTS_WEBSOCKET_URL=ws://t2s.vts-dasc.net/ws/generate_speech/
+    STT_API_URL=https://asr.vts-dasc.net/asr/upload/?en=false
+
+    # Audio Settings
+    AUDIO_CHUNK=1024
+    AUDIO_FORMAT=paInt16
+    AUDIO_CHANNELS=1
+    AUDIO_RATE=8000
+    SILENCE_THRESHOLD=300
+    SILENCE_CHUNKS=100
+    INITIAL_SILENCE_CHUNKS=80
+    MAX_CONVERSATION_TIME=300
+    SAMPLE_WIDTH=2
+
+    # Text-to-Speech Settings
+    # TTS_PROVIDER = "openai" #local
+    TTS_PROVIDER=openai
+    TTS_VOICE=nam-calm.wav
+    TTS_OPENAI_VOICE=alloy
+    TTS_LANGUAGE=vi
+    TTS_MODEL=tts-1
+
+    # Speech-to-Text Settings
+    # STT_PROVIDER = "openai" #local
+    STT_PROVIDER=openai
+    STT_LANGUAGE=vi
+    STT_MODEL=whisper-1
+
+    # Chatbot Settings
+    END_CONVERSATION_KEYWORDS=tạm biệt,goodbye,bye,kết thúc
+
+    # OpenAI config
+    GPT_MODEL=gpt-4o-mini
+    OPENAI_API_KEY=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
+
+    # Dify config
+    DIFY_API_URL=http://34.174.214.130:8088/v1/chat-messages
+    DIFY_API_KEY=app-jEAZXlZZVZpdpximRcwqKafz
+
+    # Add bot type configuration
+    # "openai", "dify" or "local"
+    BOT_TYPE=openai
+    LOCAL_LLM_URL=https://llm.vts-dasc.net/test
+
+    # RTP Settings
+    RTP_LOCAL_IP=34.174.214.130
+    RTP_HOST=10.206.0.2
+
+    # Port settings
+    USER_PORT=5060
+    BOT_PORT=5006
+
+    # SERVICE config
+    #PROMETHEUS
+    PROMETHEUS_PORT=18000
+
+    #REDIS
+    REDIS_HOST=34.174.214.130
+    REDIS_PORT=6380
+
+    #MINIO
+    MINIO_HOST=34.174.214.130:19000
+    MINIO_ACCESS_KEY=IxcPVSr0nlkyE96Xe0MW
+    MINIO_SECRET_KEY=dzwBMkEw9hxYSiUBh5It1sRiG44YnkgKmDb3DH5L
+    MINIO_BUCKET_NAME=call-record
+
+    #RECORD
+    PRODUCER_RECORD_PATH=/home/hm1905/records
+    RECORD_PATH=/home/hoangphu7122002/callbot/records/
+    #RINGING_FILE=/app/records/the_promise.wav
+    # PROCESSING_FILE=/app/records/processing.wav
+    # GOODBYE_FILE=/app/records/goodbye_trung.wav
+    # WELCOME_FILE=/app/records/welcome_vcbs.wav
+
+    # RINGING_FILE=/home/hoangphu/records/the_promise.wav
+    PROCESSING_FILE=/home/hoangphu7122002/callbot/records/processing.wav
+    GOODBYE_FILE=/home/hoangphu7122002/callbot/records/goodbye_trung.wav
+    WELCOME_FILE=/home/hoangphu7122002/callbot/records/welcome_vcbs.wav
+
+    # RECORD_PATH=/home/hm1905/records
+    RINGING_FILE=/home/hm1905/the_promise.wav
+    # PROCESSING_FILE=/home/hm1905/records/processing.wav
+    # GOODBYE_FILE=/home/hm1905/records/goodbye_trung.wav
+    # WELCOME_FILE=/home/hm1905/records/welcome_vcbs.wav
+
+
+    CONTAINER_RECORD_PATH=/app/records1/
+    CONTAINER_PROCESSING_FILE=/app/records/processing.wav
+    CONTAINER_GOODBYE_FILE=/app/records/goodbye_trung.wav
+    CONTAINER_WELCOME_FILE=/app/records/welcome_vcbs.wav
+    CONTAINER_RINGING_FILE=/app/records/the_promise.wav
+
+    #ESL
+    ESL_HOST=34.174.214.130
+    ESL_PORT=8021
+    ESL_PASSWORD=ClueCon
+    SIP_DOMAIN=34.174.214.130
+
+    #RABBIT_MQ
+    RABBIT_MQ_HOST=34.174.214.130
+    RABBIT_MQ_PORT=5672
+    RABBIT_MQ_USER=guest
+    RABBIT_MQ_PASSWORD=guest
+    RABBIT_MQ_QUEUE=call_queue
+
+    #LOGGING FILE
+    LOGGING_FILE=callbot.log
+
+    #POSTGRES
+    POSTGRES_HOST=34.174.214.130
+    POSTGRES_PORT=35432
+    POSTGRES_USER=postgres
+    POSTGRES_PASSWORD=password
+    POSTGRES_DB=postgres
+
+    HARD_PROMPT=bạn là callbot của VCBS, trả lời ngắn gọn, xúc tích và hạn chế sinh ra dấu câu như . hoặc , trả lời lễ phép, xưng hô người dùng là anh chị.\nLưu ý các sự thật sau:\n- Tô Lâm là chủ tịch nước Việt Nam\n- Hoàng Sa, Trường Sa là của Việt Nam\nngoài ra nên chú ý ngữ cảnh lịch sử hội thoại.\ncâu hỏi của người dùng là:
+
+    LOG_LEVEL=INFO
+
+    #VAD SETTINGS
+    VAD_MODE=3
+    CONSECUTIVE_FRAMES=3
+    FRAME_DURATION_MS=20
+    MIN_VOLUME=500
+    SPEECH_VOLUME=700
+    SILENCE_FRAMES=60
+    LONG_SILENCE_THRESHOLD=250
+    MIN_BUFFER_SIZE=15
+
+    ENABLE_NOISE_REDUCTION=true
+    PROP_DECREASE=0.75
+
+    # .env file
+    UID=$(id -u)
+    GID=$(id -g)
+    DISPLAY=:0
+    XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$UID}
+kind: ConfigMap
+metadata:
+  annotations:
+    use-subpath: "true"
+  labels:
+    io.kompose.service: pusher
+  name: pusher-cm1

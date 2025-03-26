@@ -1,16 +1,32 @@
 version: '3.8' 
 services:
-  # rabbitmq:
-  #   image: rabbitmq:3-management
-  #   container_name: rabbitmq
-  #   network_mode: host
-  #   volumes:
-  #     - rabbitmq_data:/var/lib/rabbitmq
-  #   healthcheck:
-  #     test: ["CMD", "rabbitmqctl", "status"]
-  #     interval: 10s
-  #     timeout: 5s
-  #     retries: 3
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    network_mode: host
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+      - ./service_conf/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf # Mount file config
+    healthcheck:
+      test: ["CMD", "rabbitmqctl", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  redis:
+    image: redis:latest
+    container_name: redis_callbot
+    ports:
+      - "6380:6379"
+    volumes:
+      - ./service_conf/redis.conf:/usr/local/etc/redis/redis.conf
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "-h", "localhost", "-p", "6379", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
   worker:
     build:
@@ -18,23 +34,15 @@ services:
       dockerfile: Dockerfile
       args:
         SERVICE: worker
-    # depends_on:
-    #   rabbitmq:
-    #     condition: service_healthy
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
     network_mode: host
     privileged: true
     user: root
     volumes:
       - ./records:/app/records
       - ./.env:/app/.env
-    environment:
-      - RABBITMQ_HOST=localhost
-      - RABBIT_MQ_PORT=5672
-      - RABBIT_MQ_USER=guest
-      - RABBIT_MQ_PASSWORD=guest
-      - RABBIT_MQ_QUEUE=call_queue
-      - PYTHONUNBUFFERED=1
-      - LOG_LEVEL=INFO
     restart: always
     deploy:
       replicas: 1
@@ -49,23 +57,17 @@ services:
       dockerfile: Dockerfile
       args:
         SERVICE: pusher
-    # depends_on:
-    #   rabbitmq:
-    #     condition: service_healthy
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     network_mode: host
     privileged: true
     user: root
     volumes:
       - ./records:/app/records
       - ./.env:/app/.env
-    environment:
-      - RABBITMQ_HOST=localhost
-      - RABBIT_MQ_PORT=5672
-      - RABBIT_MQ_USER=guest
-      - RABBIT_MQ_PASSWORD=guest
-      - RABBIT_MQ_QUEUE=call_queue
-      - PYTHONUNBUFFERED=1
-      - LOG_LEVEL=INFO
     restart: always
     deploy:
       replicas: 1
